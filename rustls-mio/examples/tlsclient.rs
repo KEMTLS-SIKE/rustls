@@ -21,7 +21,6 @@ use docopt::Docopt;
 use rustls;
 use webpki;
 use webpki_roots;
-use ct_logs;
 
 
 mod util;
@@ -481,7 +480,7 @@ fn make_config(args: &Args) -> Arc<rustls::ClientConfig> {
             .unwrap();
     } else {
         config.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-        config.ct_logs = Some(&ct_logs::LOGS);
+        config.ct_logs = None;
     }
 
     if args.flag_no_tickets {

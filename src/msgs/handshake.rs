@@ -235,10 +235,11 @@ impl DecomposedSignatureScheme for SignatureScheme {
     }
 
     fn make(alg: SignatureAlgorithm, hash: HashAlgorithm) -> SignatureScheme {
-        use crate::msgs::enums::SignatureAlgorithm::{RSA, ECDSA};
+        use crate::msgs::enums::SignatureAlgorithm::*;
         use crate::msgs::enums::HashAlgorithm::{SHA1, SHA256, SHA384, SHA512};
 
         match (alg, hash) {
+            (SPHINCS_SHAKE_256_128F_SIMPLE, SHA384) => SignatureScheme::SPHINCS_SHAKE_256_128F_SIMPLE,
             (RSA, SHA1) => SignatureScheme::RSA_PKCS1_SHA1,
             (RSA, SHA256) => SignatureScheme::RSA_PKCS1_SHA256,
             (RSA, SHA384) => SignatureScheme::RSA_PKCS1_SHA384,

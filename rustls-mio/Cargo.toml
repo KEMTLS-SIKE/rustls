@@ -20,11 +20,11 @@ quic = ["rustls/quic"]
 base64 = "0.10"
 log = { version = "0.4.0", optional = true }
 rustls = { path = ".." }
-sct = "0.5"
-webpki = "0.19"
+sct = { path = "../../sct.rs" }
+webpki = { path = "../../webpki" }
 
 [dev-dependencies]
-ct-logs = "0.5"
+#ct-logs = "0.5"
 docopt = "~1.0"
 env_logger = "0.6"
 mio = "0.6"
@@ -33,7 +33,7 @@ serde = "1.0"
 serde_derive = "1.0"
 tempfile = "3.0"
 vecio = "0.1"
-webpki-roots = "0.16"
+webpki-roots = { path = "../../webpki-roots" }
 
 [[example]]
 name = "tlsclient"

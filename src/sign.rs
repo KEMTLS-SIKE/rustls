@@ -5,7 +5,7 @@ use crate::error::TLSError;
 
 use untrusted;
 
-use ring::{self, signature::{self, EcdsaKeyPair, RsaKeyPair}};
+use ring::{self, signature::{self, EcdsaKeyPair, RsaKeyPair, PQSecretKey}};
 use webpki;
 
 use std::sync::Arc;
@@ -140,7 +140,7 @@ pub fn any_supported_type(der: &key::PrivateKey) -> Result<Box<SigningKey>, ()> 
         return Ok(Box::new(rsa));
     }
 
-    any_ecdsa_type(der)
+    any_ecdsa_type(der).or_else(|_| any_pq_type(der))
 }
 
 /// Parse `der` as any ECDSA key type, returning the first which works.
@@ -157,6 +157,19 @@ pub fn any_ecdsa_type(der: &key::PrivateKey) -> Result<Box<SigningKey>, ()> {
         return Ok(Box::new(ecdsa_p384));
     }
 
+    Err(())
+}
+
+/// Parse `der` as any PQ signature scheme
+pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<SigningKey>, ()> {
+    let options = [
+        (SignatureScheme::SPHINCS_SHAKE_256_128S_SIMPLE, &signature::SPHINCS_SHAKE_256_128S_SIMPLE),
+    ];
+    for (scheme, alg) in options.into_iter() {
+        if let Ok(scheme) = PQSchemeSigner::new(der, *scheme, alg) {
+            return Ok(Box::new(scheme));
+        }
+    }
     Err(())
 }
 
@@ -298,6 +311,49 @@ impl Signer for SingleSchemeSigner {
     }
 }
 
+#[derive(Clone)]
+struct PQSchemeSigner {
+    key: Arc<PQSecretKey>,
+    scheme: SignatureScheme,
+}
+
+impl PQSchemeSigner {
+    fn new(der: &key::PrivateKey,
+               scheme: SignatureScheme,
+               sigalg: &'static signature::PQSignatureScheme) -> Result<PQSchemeSigner, ()> {
+        PQSecretKey::from_pkcs8(sigalg, untrusted::Input::from(&der.0))
+            .map(|kp| PQSchemeSigner { key: Arc::new(kp), scheme })
+            .map_err(|_| ())
+    }
+}
+
+
+impl SigningKey for PQSchemeSigner {
+    fn choose_scheme(&self, offered: &[SignatureScheme]) -> Option<Box<Signer>> {
+        if offered.contains(&self.scheme) {
+            Some(Box::new(self.clone()))
+        } else {
+            None
+        }
+    }
+    fn algorithm(&self) -> SignatureAlgorithm {
+        use crate::msgs::handshake::DecomposedSignatureScheme;
+        self.scheme.sign()
+    }
+}
+
+impl Signer for PQSchemeSigner {
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, TLSError> {
+        self.key.sign(untrusted::Input::from(message))
+            .map_err(|_| TLSError::General("signing failed".into()))
+            .map(|sig| sig.as_ref().into())
+    }
+
+    fn get_scheme(&self) -> SignatureScheme {
+        self.scheme
+    }
+}
+
 /// The set of schemes we support for signatures and
 /// that are allowed for TLS1.3.
 pub fn supported_sign_tls13() -> &'static [SignatureScheme] {
@@ -309,5 +365,41 @@ pub fn supported_sign_tls13() -> &'static [SignatureScheme] {
         SignatureScheme::RSA_PSS_SHA384,
         SignatureScheme::RSA_PSS_SHA256,
 
+        SignatureScheme::SPHINCS_SHA_256_128S_SIMPLE,
+        SignatureScheme::SPHINCS_SHA_256_128S_ROBUST,
+        SignatureScheme::SPHINCS_SHA_256_128F_SIMPLE,
+        SignatureScheme::SPHINCS_SHA_256_128F_ROBUST,
+        SignatureScheme::SPHINCS_SHA_256_192S_SIMPLE,
+        SignatureScheme::SPHINCS_SHA_256_192S_ROBUST,
+        SignatureScheme::SPHINCS_SHA_256_192F_SIMPLE,
+        SignatureScheme::SPHINCS_SHA_256_192F_ROBUST,
+        SignatureScheme::SPHINCS_SHA_256_256S_SIMPLE,
+        SignatureScheme::SPHINCS_SHA_256_256S_ROBUST,
+        SignatureScheme::SPHINCS_SHA_256_256F_SIMPLE,
+        SignatureScheme::SPHINCS_SHA_256_256F_ROBUST,
+        SignatureScheme::SPHINCS_SHAKE_256_128S_SIMPLE,
+        SignatureScheme::SPHINCS_SHAKE_256_128S_ROBUST,
+        SignatureScheme::SPHINCS_SHAKE_256_128F_SIMPLE,
+        SignatureScheme::SPHINCS_SHAKE_256_128F_ROBUST,
+        SignatureScheme::SPHINCS_SHAKE_256_192S_SIMPLE,
+        SignatureScheme::SPHINCS_SHAKE_256_192S_ROBUST,
+        SignatureScheme::SPHINCS_SHAKE_256_192F_SIMPLE,
+        SignatureScheme::SPHINCS_SHAKE_256_192F_ROBUST,
+        SignatureScheme::SPHINCS_SHAKE_256_256S_SIMPLE,
+        SignatureScheme::SPHINCS_SHAKE_256_256S_ROBUST,
+        SignatureScheme::SPHINCS_SHAKE_256_256F_SIMPLE,
+        SignatureScheme::SPHINCS_SHAKE_256_256F_ROBUST,
+        SignatureScheme::SPHINCS_HARAKA_128S_SIMPLE,
+        SignatureScheme::SPHINCS_HARAKA_128S_ROBUST,
+        SignatureScheme::SPHINCS_HARAKA_128F_SIMPLE,
+        SignatureScheme::SPHINCS_HARAKA_128F_ROBUST,
+        SignatureScheme::SPHINCS_HARAKA_192S_SIMPLE,
+        SignatureScheme::SPHINCS_HARAKA_192S_ROBUST,
+        SignatureScheme::SPHINCS_HARAKA_192F_SIMPLE,
+        SignatureScheme::SPHINCS_HARAKA_192F_ROBUST,
+        SignatureScheme::SPHINCS_HARAKA_256S_SIMPLE,
+        SignatureScheme::SPHINCS_HARAKA_256S_ROBUST,
+        SignatureScheme::SPHINCS_HARAKA_256F_SIMPLE,
+        SignatureScheme::SPHINCS_HARAKA_256F_ROBUST,
     ]
 }
