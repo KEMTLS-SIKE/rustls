@@ -405,6 +405,7 @@ fn convert_alg_tls13(scheme: SignatureScheme)
         SPHINCS_HARAKA_256S_ROBUST => Ok(&webpki::SPHINCS_HARAKA_256S_ROBUST),
         SPHINCS_HARAKA_256F_SIMPLE => Ok(&webpki::SPHINCS_HARAKA_256F_SIMPLE),
         SPHINCS_HARAKA_256F_ROBUST => Ok(&webpki::SPHINCS_HARAKA_256F_ROBUST),
+
         _ => {
             let error_msg = format!("received unsupported sig scheme {:?}", scheme);
             Err(TLSError::PeerMisbehavedError(error_msg))
