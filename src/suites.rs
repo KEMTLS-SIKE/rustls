@@ -45,6 +45,7 @@ impl KeyExchange {
             NamedGroup::X25519 => Some(&ring::agreement::X25519),
             NamedGroup::secp256r1 => Some(&ring::agreement::ECDH_P256),
             NamedGroup::secp384r1 => Some(&ring::agreement::ECDH_P384),
+            NamedGroup::CSIDH => Some(&ring::agreement::CSIDH),
             _ => None,
         }
     }
@@ -52,6 +53,7 @@ impl KeyExchange {
     pub fn supported_groups() -> &'static [NamedGroup] {
         // in preference order
         &[
+            NamedGroup::CSIDH,
             NamedGroup::X25519,
             NamedGroup::secp384r1,
             NamedGroup::secp256r1

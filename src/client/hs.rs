@@ -289,7 +289,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         //
         let groups = retryreq.and_then(|req| req.get_requested_key_share_group())
             .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
-            .or_else(|| Some(NamedGroup::X25519))
+            .or_else(|| Some(NamedGroup::CSIDH))
             .map(|grp| vec![ grp ])
             .unwrap();
 

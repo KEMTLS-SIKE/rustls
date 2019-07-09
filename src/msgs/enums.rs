@@ -324,7 +324,8 @@ enum_builder! {
         X25519 => 0x001d,
         X448 => 0x001e,
         arbitrary_explicit_prime_curves => 0xff01,
-        arbitrary_explicit_char2_curves => 0xff02
+        arbitrary_explicit_char2_curves => 0xff02,
+        CSIDH => 508
     }
 }
 
