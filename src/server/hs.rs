@@ -353,10 +353,10 @@ impl ExpectClientHello {
 
         // Do key exchange
         let kxr = suites::KeyExchange::start_ecdhe(share.group)
-            .and_then(|kx| kx.complete(&share.payload.0))
+            .and_then(|kx| kx.encapsulate(&share.payload.0))
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
 
-        let kse = KeyShareEntry::new(share.group, kxr.pubkey.as_ref());
+        let kse = KeyShareEntry::new(share.group, kxr.ciphertext.unwrap().as_ref());
         extensions.push(ServerExtension::KeyShare(kse));
         extensions.push(ServerExtension::SupportedVersions(ProtocolVersion::TLSv1_3));
 
@@ -412,6 +412,7 @@ impl ExpectClientHello {
             key_schedule.input_empty();
         }
         key_schedule.input_secret(&kxr.premaster_secret);
+        println!("server secret: {:?}", kxr.premaster_secret);
 
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
         let write_key = key_schedule.derive(SecretKind::ServerHandshakeTrafficSecret, &handshake_hash);
@@ -1414,7 +1415,7 @@ impl State for ExpectTLS12ClientKX {
             return Err(TLSError::CorruptMessagePayload(ContentType::Handshake));
         }
 
-        let kxd = kx.server_complete(&client_kx.0)
+        let kxd = kx.complete_server(&client_kx.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange completion failed"
                                                          .to_string()))?;
 

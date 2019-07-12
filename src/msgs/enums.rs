@@ -346,7 +346,8 @@ enum_builder! {
         FFDHE4096 => 0x0102,
         FFDHE6144 => 0x0103,
         FFDHE8192 => 0x0104,
-        CSIDH => 508
+        CSIDH => 508,
+        KYBER512 => 509
     }
 }
 

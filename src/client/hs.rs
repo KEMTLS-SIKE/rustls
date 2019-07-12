@@ -289,7 +289,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         //
         let groups = retryreq.and_then(|req| req.get_requested_key_share_group())
             .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
-            .or_else(|| Some(NamedGroup::CSIDH))
+            .or_else(|| Some(NamedGroup::KYBER512)) // XX DEFAULT KEM
             .map(|grp| vec![ grp ])
             .unwrap();
 
@@ -587,9 +587,10 @@ impl ExpectServerHello {
 
         let our_key_share = self.hello.find_key_share_and_discard_others(their_key_share.group)
             .ok_or_else(|| illegal_param(sess, "wrong group for key share"))?;
-        let shared = our_key_share.complete(&their_key_share.payload.0)
+        let shared = our_key_share.decapsulate(&their_key_share.payload.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed"
                                                          .to_string()))?;
+        println!("Shared secret = {:?}", shared.premaster_secret);
 
         save_kx_hint(sess, self.handshake.dns_name.as_ref(), their_key_share.group);
         sess.common.get_mut_key_schedule().input_secret(&shared.premaster_secret);
@@ -1461,7 +1462,7 @@ fn emit_certificate(client_auth: &mut ClientAuthDetails,
 fn emit_clientkx(sess: &mut ClientSessionImpl,
                  kxd: &suites::KeyExchangeResult) {
     let mut buf = Vec::new();
-    let ecpoint = PayloadU8::new(Vec::from(kxd.pubkey.as_ref()));
+    let ecpoint = PayloadU8::new(Vec::from(kxd.ciphertext.as_ref().unwrap().as_ref()));
     ecpoint.encode(&mut buf);
     let pubkey = Payload::new(buf);
 
