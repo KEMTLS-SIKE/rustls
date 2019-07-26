@@ -12,6 +12,7 @@ use crate::error::TLSError;
 use crate::anchors::{DistinguishedNames, RootCertStore};
 #[cfg(feature = "logging")]
 use crate::log::{warn, debug};
+use crate::suites;
 
 type SignatureAlgorithms = &'static [&'static webpki::SignatureAlgorithm];
 
@@ -414,11 +415,12 @@ fn convert_alg_tls13(scheme: SignatureScheme)
 }
 
 pub fn verify_tls13(cert: &Certificate,
+                    our_key_share: &suites::KeyExchange,
                     dss: &DigitallySignedStruct,
                     handshake_hash: &[u8],
                     context_string_with_0: &[u8])
                     -> Result<HandshakeSignatureValid, TLSError> {
-    let alg = convert_alg_tls13(dss.scheme)?;
+    let _alg = convert_alg_tls13(dss.scheme)?;
 
     let mut msg = Vec::new();
     msg.resize(64, 0x20u8);
@@ -429,11 +431,22 @@ pub fn verify_tls13(cert: &Certificate,
     let cert = webpki::EndEntityCert::from(cert_in)
         .map_err(TLSError::WebPKIError)?;
 
-    cert.verify_signature(alg,
-                          untrusted::Input::from(&msg),
-                          untrusted::Input::from(&dss.sig.0))
-        .map_err(TLSError::WebPKIError)
+    let (_, cert_pk) = cert.public_key().map_err(|_| TLSError::General("cert pk failed?".to_owned()))?;
+
+    // XXX derive shared secret
+    let kexresult = our_key_share.clone().decapsulate(cert_pk.as_slice_less_safe()).unwrap();
+
+    // Compute and verify MAC
+    let mac_key = ring::hmac::VerificationKey::new(&ring::digest::SHA384, &kexresult.premaster_secret);
+    ring::hmac::verify(&mac_key, &msg, &dss.sig.0)
         .map(|_| HandshakeSignatureValid::assertion())
+        .map_err(|_| TLSError::General("MAC verification failed".to_owned()))
+
+    // cert.verify_signature(alg,
+    //                       untrusted::Input::from(&msg),
+    //                       untrusted::Input::from(&dss.sig.0))
+    //     .map_err(TLSError::WebPKIError)
+    //     .map(|_| HandshakeSignatureValid::assertion())
 }
 
 fn unix_time_millis() -> Result<u64, TLSError> {

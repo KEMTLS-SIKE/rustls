@@ -352,6 +352,11 @@ impl ExpectClientHello {
         let mut extensions = Vec::new();
 
         // Do key exchange
+        //
+        // Thom: In KEM-TLS the public key of the cert might be sent here, perhaps?
+        // But the client also receives the cert message, so :sha:
+        // Encapsulating can't be done here: that doesn't prove the ownership of the
+        // certificate private key.
         let kxr = suites::KeyExchange::start_ecdhe(share.group)
             .and_then(|kx| kx.encapsulate(&share.payload.0))
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
@@ -585,6 +590,7 @@ impl ExpectClientHello {
     fn emit_certificate_verify_tls13(&mut self,
                                      sess: &mut ServerSessionImpl,
                                      server_key: &mut sign::CertifiedKey,
+                                     their_keyshare: &Vec<u8>,
                                      schemes: &[SignatureScheme])
                                      -> Result<(), TLSError> {
         let mut message = Vec::new();
@@ -592,14 +598,17 @@ impl ExpectClientHello {
         message.extend_from_slice(b"TLS 1.3, server CertificateVerify\x00");
         message.extend_from_slice(&sess.common.hs_transcript.get_current_hash());
 
-        let signing_key = &server_key.key;
-        let signer = signing_key.choose_scheme(schemes)
-            .ok_or_else(|| incompatible(sess, "no overlapping sigschemes"))?;
 
-        let scheme = signer.get_scheme();
-        let sig = signer.sign(&message)?;
+        let private_key = untrusted::Input::from(server_key.key.get_key());
+        let cert_in = untrusted::Input::from(&server_key.cert[0].0);
+        let cert = webpki::EndEntityCert::from(cert_in)
+            .map_err(TLSError::WebPKIError)?;
+        let mac_key = &cert.decapsulate(private_key, untrusted::Input::from(&their_keyshare))
+            .map_err(|_| TLSError::General("didn't work".to_owned()))?;
+        let mac_key = ring::hmac::SigningKey::new(&ring::digest::SHA384, &mac_key);
+        let sig = ring::hmac::sign(&mac_key, &message);
 
-        let cv = DigitallySignedStruct::new(scheme, sig);
+        let cv = DigitallySignedStruct::new(schemes[0], sig.as_ref().to_vec());
 
         let m = Message {
             typ: ContentType::Handshake,
@@ -995,6 +1004,7 @@ impl ExpectClientHello {
 
         let full_handshake = resumedata.is_none();
         sess.common.hs_transcript.add_message(chm);
+        let their_keyshare = &chosen_share.payload.0.clone();
         self.emit_server_hello_tls13(sess, &client_hello.session_id,
                                      chosen_share, chosen_psk_index,
                                      resumedata.as_ref().map(|x| &x.master_secret.0[..]))?;
@@ -1006,7 +1016,7 @@ impl ExpectClientHello {
         let doing_client_auth = if full_handshake {
             let client_auth = self.emit_certificate_req_tls13(sess);
             self.emit_certificate_tls13(sess, &mut server_key);
-            self.emit_certificate_verify_tls13(sess, &mut server_key, &sigschemes_ext)?;
+            self.emit_certificate_verify_tls13(sess, &mut server_key, their_keyshare, &sigschemes_ext)?;
             client_auth
         } else {
             false
@@ -1246,6 +1256,8 @@ impl State for ExpectClientHello {
             .ok_or_else(|| incompatible(sess, "no supported point format"))?;
 
         debug_assert_eq!(ecpoint, ECPointFormat::Uncompressed);
+
+
 
         self.emit_server_hello(sess, Some(&mut certkey), client_hello, None)?;
         self.emit_certificate(sess, &mut certkey);
@@ -1516,6 +1528,7 @@ impl State for ExpectTLS13CertificateVerify {
             let certs = &self.client_cert.cert_chain;
 
             verify::verify_tls13(&certs[0],
+                                 panic!("client cert case"),
                                  sig,
                                  &handshake_hash,
                                  b"TLS 1.3, client CertificateVerify\x00")

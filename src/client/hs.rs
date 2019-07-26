@@ -296,7 +296,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         for group in groups {
             // in reply to HelloRetryRequest, we must not alter any existing key
             // shares
-            if let Some(already_offered_share) = hello.find_key_share(group) {
+            if let Some(already_offered_share) = hello.take_key_share(group) {
                 key_shares.push(KeyShareEntry::new(group, already_offered_share.pubkey.as_ref()));
                 hello.offered_key_shares.push(already_offered_share);
                 continue;
@@ -585,9 +585,10 @@ impl ExpectServerHello {
                 TLSError::PeerMisbehavedError("missing key share".to_string())
                 })?;
 
-        let our_key_share = self.hello.find_key_share_and_discard_others(their_key_share.group)
+        // XXX this needs to be moved to the certificate side
+        let our_key_share = self.hello.find_key_share(their_key_share.group)
             .ok_or_else(|| illegal_param(sess, "wrong group for key share"))?;
-        let shared = our_key_share.decapsulate(&their_key_share.payload.0)
+        let shared = our_key_share.clone().decapsulate(&their_key_share.payload.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed"
                                                          .to_string()))?;
         println!("Shared secret = {:?}", shared.premaster_secret);
@@ -1029,6 +1030,7 @@ impl ExpectTLS13EncryptedExtensions {
         Box::new(ExpectTLS13CertificateOrCertReq {
             handshake: self.handshake,
             server_cert: self.server_cert,
+            hello: self.hello,
         })
     }
 }
@@ -1100,6 +1102,7 @@ struct ExpectTLS13Certificate {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
     client_auth: Option<ClientAuthDetails>,
+    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13Certificate {
@@ -1108,6 +1111,7 @@ impl ExpectTLS13Certificate {
             handshake: self.handshake,
             server_cert: self.server_cert,
             client_auth: self.client_auth,
+            hello: self.hello,
         })
     }
 }
@@ -1273,6 +1277,7 @@ impl State for ExpectTLS12CertificateStatusOrServerKX {
 struct ExpectTLS13CertificateOrCertReq {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
+    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13CertificateOrCertReq {
@@ -1281,6 +1286,7 @@ impl ExpectTLS13CertificateOrCertReq {
             handshake: self.handshake,
             server_cert: self.server_cert,
             client_auth: None,
+            hello: self.hello,
         })
     }
 
@@ -1288,6 +1294,7 @@ impl ExpectTLS13CertificateOrCertReq {
         Box::new(ExpectTLS13CertificateRequest {
             handshake: self.handshake,
             server_cert: self.server_cert,
+            hello: self.hello,
         })
     }
 }
@@ -1363,6 +1370,7 @@ struct ExpectTLS13CertificateVerify {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
     client_auth: Option<ClientAuthDetails>,
+    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13CertificateVerify {
@@ -1419,7 +1427,13 @@ impl State for ExpectTLS13CertificateVerify {
 
         // 2. Verify their signature on the handshake.
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
-        let sigv = verify::verify_tls13(&self.server_cert.cert_chain[0],
+        // XXX Add our secret key to the verification to compute MAC key
+        let cert = &self.server_cert.cert_chain[0];
+        // XXX find key share from certificate type.
+        let our_key_share = self.hello.find_key_share(NamedGroup::CSIDH)
+            .ok_or_else(|| illegal_param(sess, "wrong group for key share"))?;
+        let sigv = verify::verify_tls13(cert,
+                                        our_key_share,
                                         cert_verify,
                                         &handshake_hash,
                                         b"TLS 1.3, server CertificateVerify\x00")
@@ -1608,6 +1622,7 @@ impl State for ExpectTLS12CertificateRequest {
 struct ExpectTLS13CertificateRequest {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
+    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13CertificateRequest {
@@ -1616,6 +1631,7 @@ impl ExpectTLS13CertificateRequest {
             handshake: self.handshake,
             server_cert: self.server_cert,
             client_auth: Some(client_auth),
+            hello: self.hello,
         })
     }
 }

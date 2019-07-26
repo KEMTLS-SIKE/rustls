@@ -31,6 +31,7 @@ pub struct KeyExchangeResult {
 
 /// An in-progress key exchange.  This has the algorithm,
 /// our private key, and our public key.
+#[derive(Clone)]
 pub struct KeyExchange {
     pub group: NamedGroup,
     alg: &'static ring::agreement::Algorithm,

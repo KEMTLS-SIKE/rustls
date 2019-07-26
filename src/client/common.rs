@@ -95,17 +95,21 @@ impl ClientHelloDetails {
             .any(|share| share.group == group)
     }
 
-    pub fn find_key_share(&mut self, group: NamedGroup) -> Option<suites::KeyExchange> {
+    pub fn take_key_share(&mut self, group: NamedGroup) -> Option<suites::KeyExchange> {
         self.offered_key_shares.iter()
             .position(|s| s.group == group)
             .map(|idx| self.offered_key_shares.remove(idx))
     }
 
-    pub fn find_key_share_and_discard_others(&mut self, group: NamedGroup)
+    pub fn find_key_share(&self, group: NamedGroup) -> Option<&suites::KeyExchange> {
+        self.offered_key_shares.iter().find(|s| s.group == group)
+    }
+
+    pub fn take_key_share_and_discard_others(&mut self, group: NamedGroup)
             -> Option<suites::KeyExchange> {
-        match self.find_key_share(group) {
+        match self.take_key_share(group) {
             Some(group) => {
-                self.offered_key_shares.clear();
+                //self.offered_key_shares.clear();
                 Some(group)
             }
             None => {

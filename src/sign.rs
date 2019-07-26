@@ -21,6 +21,11 @@ pub trait SigningKey : Send + Sync {
 
     /// What kind of key we have.
     fn algorithm(&self) -> SignatureAlgorithm;
+
+    /// Gets the key, hack for kems
+    fn get_key(&self) -> &[u8] {
+        panic!("not implemented");
+    }
 }
 
 /// A thing that can sign a message.
@@ -131,6 +136,21 @@ impl CertifiedKey {
 
         Ok(())
     }
+
+    /// fetch it as webpki cert
+    pub fn get_as_webpki_cert(&self) -> Result<webpki::EndEntityCert, TLSError> {
+        // Always reject an empty certificate chain.
+        let end_entity_cert = self.end_entity_cert().map_err(|()| {
+            TLSError::General("No end-entity certificate in certificate chain".to_string())
+        })?;
+
+        // Reject syntactically-invalid end-entity certificates.
+        Ok(webpki::EndEntityCert::from(
+            untrusted::Input::from(end_entity_cert.as_ref())).map_err(|_| {
+                TLSError::General("End-entity certificate in certificate \
+                                  chain is syntactically invalid".to_string())
+        })?)
+    }
 }
 
 /// Parse `der` as any supported key encoding/type, returning
@@ -170,7 +190,10 @@ pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
             return Ok(Box::new(scheme));
         }
     }
-    Err(())
+
+    Ok(Box::new(PQKemSigner::new(der).unwrap()))
+
+    //Err(())
 }
 
 /// A `SigningKey` for RSA-PKCS1 or RSA-PSS
@@ -351,6 +374,36 @@ impl Signer for PQSchemeSigner {
 
     fn get_scheme(&self) -> SignatureScheme {
         self.scheme
+    }
+}
+
+
+/// XXX ONLY SUPPORTS CSIDH AND DOES NOT CHECK!
+#[derive(Clone)]
+struct PQKemSigner {
+    key: Arc<Vec<u8>>,
+}
+
+impl PQKemSigner {
+    /// XXX ONLY SUPPORTS CSIDH AND DOES NOT CHECK!
+    fn new(der: &key::PrivateKey) -> Result<Self, ()> {
+
+        Ok(PQKemSigner {
+            key: Arc::new(der.0.clone()),
+        })
+    }
+}
+
+impl SigningKey for PQKemSigner {
+    fn choose_scheme(&self, _: &[SignatureScheme]) -> Option<Box<dyn Signer>> {
+        panic!("Not implemented");
+    }
+    fn algorithm(&self) -> SignatureAlgorithm {
+        panic!("Not implemented");
+    }
+
+    fn get_key(&self) -> &[u8] {
+        &self.key
     }
 }
 
