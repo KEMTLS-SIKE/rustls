@@ -546,7 +546,7 @@ impl ExpectClientHello {
                               server_key: &mut sign::CertifiedKey) {
         let mut cert_body = CertificatePayloadTLS13::new();
 
-        for cert in server_key.take_cert() {
+        for cert in server_key.clone().take_cert() {
             let entry = CertificateEntry {
                 cert,
                 exts: Vec::new(),

@@ -387,9 +387,8 @@ struct PQKemSigner {
 impl PQKemSigner {
     /// XXX ONLY SUPPORTS CSIDH AND DOES NOT CHECK!
     fn new(der: &key::PrivateKey) -> Result<Self, ()> {
-
         Ok(PQKemSigner {
-            key: Arc::new(der.0.clone()),
+            key: Arc::new(der.0.clone()[der.0.len()-74..].to_vec()),
         })
     }
 }
@@ -399,7 +398,7 @@ impl SigningKey for PQKemSigner {
         panic!("Not implemented");
     }
     fn algorithm(&self) -> SignatureAlgorithm {
-        panic!("Not implemented");
+        SignatureAlgorithm::RSA
     }
 
     fn get_key(&self) -> &[u8] {
