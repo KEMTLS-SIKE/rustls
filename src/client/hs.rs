@@ -585,7 +585,7 @@ impl ExpectServerHello {
                 TLSError::PeerMisbehavedError("missing key share".to_string())
                 })?;
 
-        // XXX this needs to be moved to the certificate side
+        // XXX: Get the shared secret for the first phase of encrypting traffic.
         let our_key_share = self.hello.find_key_share(their_key_share.group)
             .ok_or_else(|| illegal_param(sess, "wrong group for key share"))?;
         let shared = our_key_share.clone().decapsulate(&their_key_share.payload.0)
@@ -601,17 +601,18 @@ impl ExpectServerHello {
         self.handshake.hash_at_client_recvd_server_hello =
             sess.common.hs_transcript.get_current_hash();
 
-        if !sess.early_data.is_enabled() {
-            // Set the client encryption key for handshakes if early data is not used
-            let write_key = sess.common.get_key_schedule()
-                .derive(SecretKind::ClientHandshakeTrafficSecret,
-                    &self.handshake.hash_at_client_recvd_server_hello);
-            sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-            sess.config.key_log.log(sess.common.protocol.labels().client_handshake_traffic_secret,
-                                 &self.handshake.randoms.client,
-                                 &write_key);
-            sess.common.get_mut_key_schedule().current_client_traffic_secret = write_key;
-        }
+        // Early data this early (based on this key) is a stupid idea in KEMTLS: completely MITMable
+        // if !sess.early_data.is_enabled() {
+        //     // Set the client encryption key for handshakes if early data is not used
+        //     let write_key = sess.common.get_key_schedule()
+        //         .derive(SecretKind::ClientHandshakeTrafficSecret,
+        //             &self.handshake.hash_at_client_recvd_server_hello);
+        //     sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+        //     sess.config.key_log.log(sess.common.protocol.labels().client_handshake_traffic_secret,
+        //                          &self.handshake.randoms.client,
+        //                          &write_key);
+        //     sess.common.get_mut_key_schedule().current_client_traffic_secret = write_key;
+        // }
 
         let read_key = sess.common.get_key_schedule()
             .derive(SecretKind::ServerHandshakeTrafficSecret,
@@ -1030,7 +1031,6 @@ impl ExpectTLS13EncryptedExtensions {
         Box::new(ExpectTLS13CertificateOrCertReq {
             handshake: self.handshake,
             server_cert: self.server_cert,
-            hello: self.hello,
         })
     }
 }
@@ -1102,17 +1102,40 @@ struct ExpectTLS13Certificate {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
     client_auth: Option<ClientAuthDetails>,
-    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13Certificate {
-    fn into_expect_tls13_certificate_verify(self) -> NextState {
-        Box::new(ExpectTLS13CertificateVerify {
+    fn into_expect_tls13_finished(self) -> NextState {
+        Box::new(ExpectTLS13Finished {
             handshake: self.handshake,
-            server_cert: self.server_cert,
             client_auth: self.client_auth,
-            hello: self.hello,
+            cert_verified: verify::ServerCertVerified::assertion(),
+            sig_verified: verify::HandshakeSignatureValid::assertion(),
         })
+    }
+    fn emit_clientkx(&self, session: &mut ClientSessionImpl) {
+        let cert = &self.server_cert.cert_chain[0];
+        let cert_in = untrusted::Input::from(&cert.0);
+        let cert = webpki::EndEntityCert::from(cert_in)
+            .map_err(TLSError::WebPKIError).unwrap();
+
+        let (ciphertext, shared_secret) = cert.encapsulate().unwrap();
+
+        session.common.get_mut_key_schedule().input_secret(&shared_secret);
+
+        let ckx = Message {
+            typ: ContentType::Handshake,
+            version: ProtocolVersion::TLSv1_2,
+            payload: MessagePayload::Handshake(HandshakeMessagePayload {
+                typ: HandshakeType::ClientKeyExchange,
+                payload: HandshakePayload::ClientKeyExchange(Payload::new(
+                    ciphertext.as_ref().to_vec())),
+            }),
+        };
+
+        session.common.hs_transcript.add_message(&ckx);
+        session.common.send_msg(ckx, false);
+
     }
 }
 
@@ -1155,7 +1178,18 @@ impl State for ExpectTLS13Certificate {
             }
         }
 
-        Ok(self.into_expect_tls13_certificate_verify())
+        let certv = sess.config
+            .get_verifier()
+            .verify_server_cert(&sess.config.root_store,
+                                &self.server_cert.cert_chain,
+                                self.handshake.dns_name.as_ref(),
+                                &self.server_cert.ocsp_response)
+            .map_err(|err| send_cert_error_alert(sess, err))?;
+
+
+        self.emit_clientkx(sess);
+
+        Ok(self.into_expect_tls13_finished())
     }
 }
 
@@ -1277,7 +1311,6 @@ impl State for ExpectTLS12CertificateStatusOrServerKX {
 struct ExpectTLS13CertificateOrCertReq {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
-    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13CertificateOrCertReq {
@@ -1286,7 +1319,6 @@ impl ExpectTLS13CertificateOrCertReq {
             handshake: self.handshake,
             server_cert: self.server_cert,
             client_auth: None,
-            hello: self.hello,
         })
     }
 
@@ -1294,7 +1326,6 @@ impl ExpectTLS13CertificateOrCertReq {
         Box::new(ExpectTLS13CertificateRequest {
             handshake: self.handshake,
             server_cert: self.server_cert,
-            hello: self.hello,
         })
     }
 }
@@ -1622,7 +1653,6 @@ impl State for ExpectTLS12CertificateRequest {
 struct ExpectTLS13CertificateRequest {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
-    hello: ClientHelloDetails,
 }
 
 impl ExpectTLS13CertificateRequest {
@@ -1631,7 +1661,6 @@ impl ExpectTLS13CertificateRequest {
             handshake: self.handshake,
             server_cert: self.server_cert,
             client_auth: Some(client_auth),
-            hello: self.hello,
         })
     }
 }
@@ -1802,6 +1831,7 @@ impl State for ExpectTLS12ServerDone {
             return Err(TLSError::NoCertificatesPresented);
         }
 
+        // XXX Handle kem stuff?
         let certv = sess.config
             .get_verifier()
             .verify_server_cert(&sess.config.root_store,
@@ -1819,6 +1849,9 @@ impl State for ExpectTLS12ServerDone {
             }
             (_, _) => {}
         }
+
+        // This certificate validation doesn't work anymore for KEM certs as they
+        // can't sign shit.
 
         // 3.
         // Build up the contents of the signed message.

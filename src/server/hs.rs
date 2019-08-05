@@ -7,10 +7,10 @@ use crate::msgs::base::{Payload, PayloadU8};
 use crate::msgs::handshake::{HandshakePayload, SupportedSignatureSchemes};
 use crate::msgs::handshake::{HandshakeMessagePayload, ServerHelloPayload, Random};
 use crate::msgs::handshake::{ClientHelloPayload, ServerExtension, SessionID};
-use crate::msgs::handshake::{ConvertProtocolNameList, ConvertServerNameList};
+use crate::msgs::handshake::ConvertServerNameList;
 use crate::msgs::handshake::ClientExtension;
 use crate::msgs::handshake::{ECPointFormatList, SupportedPointFormats};
-use crate::msgs::handshake::{ServerECDHParams, DigitallySignedStruct};
+use crate::msgs::handshake::{ClientECDHParams, ServerECDHParams, DigitallySignedStruct};
 use crate::msgs::handshake::{ServerKeyExchangePayload, ECDHEServerKeyExchange};
 use crate::msgs::handshake::{CertificateRequestPayload, NewSessionTicketPayload};
 use crate::msgs::handshake::{CertificateRequestPayloadTLS13, NewSessionTicketPayloadTLS13};
@@ -203,6 +203,13 @@ impl ExpectClientHello {
         })
     }
 
+    fn into_expect_kemtls_client_kx(self, server_key: sign::CertifiedKey) -> NextState {
+        Box::new(ExpectKEMTLSClientKX {
+            handshake: self.handshake,
+            server_key,
+        })
+    }
+
     fn process_extensions(&mut self,
                           sess: &mut ServerSessionImpl,
                           server_key: Option<&mut sign::CertifiedKey>,
@@ -211,45 +218,45 @@ impl ExpectClientHello {
                           -> Result<Vec<ServerExtension>, TLSError> {
         let mut ret = Vec::new();
 
-        // ALPN
-        let our_protocols = &sess.config.alpn_protocols;
-        let maybe_their_protocols = hello.get_alpn_extension();
-        if let Some(their_protocols) = maybe_their_protocols {
-            let their_proto_vecs = their_protocols.to_vecs();
+        // // ALPN
+        // let our_protocols = &sess.config.alpn_protocols;
+        // let maybe_their_protocols = hello.get_alpn_extension();
+        // if let Some(their_protocols) = maybe_their_protocols {
+        //     let their_proto_vecs = their_protocols.to_vecs();
 
-            if their_proto_vecs.iter().any(|proto| proto.is_empty()) {
-                return Err(TLSError::PeerMisbehavedError("client offered empty ALPN protocol"
-                    .to_string()));
-            }
+        //     if their_proto_vecs.iter().any(|proto| proto.is_empty()) {
+        //         return Err(TLSError::PeerMisbehavedError("client offered empty ALPN protocol"
+        //             .to_string()));
+        //     }
 
-            sess.alpn_protocol = util::first_in_both(our_protocols, &their_proto_vecs);
-            if let Some(ref selected_protocol) = sess.alpn_protocol {
-                debug!("Chosen ALPN protocol {:?}", selected_protocol);
-                ret.push(ServerExtension::make_alpn(&[selected_protocol]));
-            }
-        }
+        //     sess.alpn_protocol = util::first_in_both(our_protocols, &their_proto_vecs);
+        //     if let Some(ref selected_protocol) = sess.alpn_protocol {
+        //         debug!("Chosen ALPN protocol {:?}", selected_protocol);
+        //         ret.push(ServerExtension::make_alpn(&[selected_protocol]));
+        //     }
+        // }
 
-        #[cfg(feature = "quic")] {
-            if sess.common.protocol == Protocol::Quic {
-                if let Some(params) = hello.get_quic_params_extension() {
-                    sess.common.quic.params = Some(params);
-                }
+        // #[cfg(feature = "quic")] {
+        //     if sess.common.protocol == Protocol::Quic {
+        //         if let Some(params) = hello.get_quic_params_extension() {
+        //             sess.common.quic.params = Some(params);
+        //         }
 
-                if let Some(resume) = resumedata {
-                    if sess.config.max_early_data_size > 0
-                        && hello.early_data_extension_offered()
-                        && resume.version == sess.common.negotiated_version.unwrap()
-                        && resume.cipher_suite == sess.common.get_suite_assert().suite
-                        && resume.alpn.as_ref().map(|x| &x.0) == sess.alpn_protocol.as_ref()
-                    {
-                        ret.push(ServerExtension::EarlyData);
-                    } else {
-                        // Clobber value set in emit_server_hello_tls13
-                        sess.common.quic.early_secret = None;
-                    }
-                }
-            }
-        }
+        //         if let Some(resume) = resumedata {
+        //             if sess.config.max_early_data_size > 0
+        //                 && hello.early_data_extension_offered()
+        //                 && resume.version == sess.common.negotiated_version.unwrap()
+        //                 && resume.cipher_suite == sess.common.get_suite_assert().suite
+        //                 && resume.alpn.as_ref().map(|x| &x.0) == sess.alpn_protocol.as_ref()
+        //             {
+        //                 ret.push(ServerExtension::EarlyData);
+        //             } else {
+        //                 // Clobber value set in emit_server_hello_tls13
+        //                 sess.common.quic.early_secret = None;
+        //             }
+        //         }
+        //     }
+        // }
 
         let for_resume = resumedata.is_some();
         // SNI
@@ -354,9 +361,13 @@ impl ExpectClientHello {
         // Do key exchange
         //
         // Thom: In KEM-TLS the public key of the cert might be sent here, perhaps?
+        // NOPE: that will identify the certificate. Can't have that.
+        //
+        // Certificate needs to be sent encrypted.
+        //
         // But the client also receives the cert message, so :sha:
-        // Encapsulating can't be done here: that doesn't prove the ownership of the
-        // certificate private key.
+        // Encapsulating with cert can't be done here: that doesn't prove the
+        // ownership of the certificate private key.
         let kxr = suites::KeyExchange::start_ecdhe(share.group)
             .and_then(|kx| kx.encapsulate(&share.payload.0))
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
@@ -625,66 +636,6 @@ impl ExpectClientHello {
         Ok(())
     }
 
-    fn emit_finished_tls13(&mut self, sess: &mut ServerSessionImpl) {
-        let handshake_hash = sess.common.hs_transcript.get_current_hash();
-        let verify_data = sess.common
-            .get_key_schedule()
-            .sign_finish(SecretKind::ServerHandshakeTrafficSecret, &handshake_hash);
-        let verify_data_payload = Payload::new(verify_data);
-
-        let m = Message {
-            typ: ContentType::Handshake,
-            version: ProtocolVersion::TLSv1_3,
-            payload: MessagePayload::Handshake(HandshakeMessagePayload {
-                typ: HandshakeType::Finished,
-                payload: HandshakePayload::Finished(verify_data_payload),
-            }),
-        };
-
-        trace!("sending finished {:?}", m);
-        sess.common.hs_transcript.add_message(&m);
-        self.handshake.hash_at_server_fin = sess.common.hs_transcript.get_current_hash();
-        sess.common.send_msg(m, true);
-
-        // Now move to application data keys.
-        sess.common.get_mut_key_schedule().input_empty();
-        let write_key = sess.common
-            .get_key_schedule()
-            .derive(SecretKind::ServerApplicationTrafficSecret,
-                    &self.handshake.hash_at_server_fin);
-        let suite = sess.common.get_suite_assert();
-        sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-        sess.config.key_log.log(sess.common.protocol.labels().server_traffic_secret_0,
-                                &self.handshake.randoms.client,
-                                &write_key);
-
-        #[cfg(feature = "quic")] {
-            let read_key = sess.common
-                .get_key_schedule()
-                .derive(SecretKind::ClientApplicationTrafficSecret,
-                        &self.handshake.hash_at_server_fin);
-            sess.common.quic.traffic_secrets = Some(quic::Secrets {
-                client: read_key,
-                server: write_key.clone(),
-            });
-        }
-
-        sess.common
-            .get_mut_key_schedule()
-            .current_server_traffic_secret = write_key;
-
-
-        let exporter_secret = sess.common
-            .get_key_schedule()
-            .derive(SecretKind::ExporterMasterSecret,
-                    &self.handshake.hash_at_server_fin);
-        sess.config.key_log.log(sess.common.protocol.labels().exporter_secret,
-                                &self.handshake.randoms.client,
-                                &exporter_secret);
-        sess.common
-            .get_mut_key_schedule()
-            .current_exporter_secret = exporter_secret;
-    }
 
     fn emit_server_hello(&mut self,
                          sess: &mut ServerSessionImpl,
@@ -764,6 +715,7 @@ impl ExpectClientHello {
                       group: &NamedGroup,
                       server_certkey: &mut sign::CertifiedKey)
                       -> Result<suites::KeyExchange, TLSError> {
+        println!("Group chosen is {:?}", group);
         let kx = sess.common.get_suite_assert()
             .start_server_kx(*group)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
@@ -780,6 +732,10 @@ impl ExpectClientHello {
         let sigscheme = signer.get_scheme();
         let sig = signer.sign(&msg)?;
 
+        // XXX: Change DigitallySignedStruct to no longer be signed.
+        // Instead, verification should happen via the shared secret.
+        // The same holds for the DH_RSA/DH_RSA key exchange methods
+        // (these are not supported by Rustls)
         let skx = ServerKeyExchangePayload::ECDHE(ECDHEServerKeyExchange {
             params: secdh,
             dss: DigitallySignedStruct::new(sigscheme, sig),
@@ -1016,20 +972,21 @@ impl ExpectClientHello {
         let doing_client_auth = if full_handshake {
             let client_auth = self.emit_certificate_req_tls13(sess);
             self.emit_certificate_tls13(sess, &mut server_key);
-            self.emit_certificate_verify_tls13(sess, &mut server_key, their_keyshare, &sigschemes_ext)?;
+            //self.emit_certificate_verify_tls13(sess, &mut server_key, their_keyshare, &sigschemes_ext)?;
             client_auth
         } else {
             false
         };
 
         check_aligned_handshake(sess)?;
-        self.emit_finished_tls13(sess);
+        Ok(self.into_expect_kemtls_client_kx(server_key))
+        // self.emit_finished_tls13(sess);
 
-        if doing_client_auth {
-            Ok(self.into_expect_tls13_certificate())
-        } else {
-            Ok(self.into_expect_tls13_finished())
-        }
+        // if doing_client_auth {
+        //     Ok(self.into_expect_tls13_certificate())
+        // } else {
+        //     Ok(self.into_expect_tls13_finished())
+        // }
     }
 
     fn save_sni(&self,
@@ -1382,6 +1339,48 @@ impl State for ExpectTLS13Certificate {
         let cert = ClientCertDetails::new(cert_chain);
         Ok(self.into_expect_tls13_certificate_verify(cert))
     }
+}
+
+// XXX: Implemnt handling the KEMTLS client kx
+pub struct ExpectKEMTLSClientKX {
+    handshake: HandshakeDetails,
+    server_key: sign::CertifiedKey,
+}
+
+impl ExpectKEMTLSClientKX {
+    fn into_expect_tls13_finished(self) -> NextState {
+        Box::new(ExpectTLS13Finished {
+            handshake: self.handshake,
+            send_ticket: false,
+        })
+    }
+}
+
+impl State for ExpectKEMTLSClientKX {
+    fn check_message(&self, msg: &Message) -> CheckResult {
+        check_handshake_message(msg, &[HandshakeType::ClientKeyExchange])
+    }
+
+    fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
+        let client_kx = extract_handshake!(m, HandshakePayload::ClientKeyExchange).unwrap();
+        sess.common.hs_transcript.add_message(&m);
+
+        // 1. Take the ciphertext
+        // ???
+        let mut rd = crate::msgs::codec::Reader::init(&client_kx.0);
+        let their_keyshare = ClientECDHParams::read(&mut rd).unwrap();
+        let private_key = untrusted::Input::from(self.server_key.key.get_key());
+        let cert_in = untrusted::Input::from(&self.server_key.cert[0].0);
+        let cert = webpki::EndEntityCert::from(cert_in)
+            .map_err(TLSError::WebPKIError)?;
+        let key = &cert.decapsulate(private_key, untrusted::Input::from(&their_keyshare.public.0))
+            .map_err(|_| TLSError::General("didn't work".to_owned()))?;
+        // 3. Add this key into the key derivation.
+        sess.common.get_mut_key_schedule().input_secret(key);
+
+        Ok(self.into_expect_tls13_finished())
+    }
+
 }
 
 // --- Process client's KeyExchange ---
@@ -1836,6 +1835,68 @@ impl ExpectTLS13Finished {
             trace!("resumption not available; not issuing ticket");
         }
     }
+
+    fn emit_finished_tls13(&mut self, sess: &mut ServerSessionImpl) {
+        let handshake_hash = sess.common.hs_transcript.get_current_hash();
+        let verify_data = sess.common
+            .get_key_schedule()
+            .sign_finish(SecretKind::ServerHandshakeTrafficSecret, &handshake_hash);
+        let verify_data_payload = Payload::new(verify_data);
+
+        let m = Message {
+            typ: ContentType::Handshake,
+            version: ProtocolVersion::TLSv1_3,
+            payload: MessagePayload::Handshake(HandshakeMessagePayload {
+                typ: HandshakeType::Finished,
+                payload: HandshakePayload::Finished(verify_data_payload),
+            }),
+        };
+
+        trace!("sending finished {:?}", m);
+        sess.common.hs_transcript.add_message(&m);
+        self.handshake.hash_at_server_fin = sess.common.hs_transcript.get_current_hash();
+        sess.common.send_msg(m, true);
+
+        // Now move to application data keys.
+        sess.common.get_mut_key_schedule().input_empty();
+        let write_key = sess.common
+            .get_key_schedule()
+            .derive(SecretKind::ServerApplicationTrafficSecret,
+                    &self.handshake.hash_at_server_fin);
+        let suite = sess.common.get_suite_assert();
+        sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+        sess.config.key_log.log(sess.common.protocol.labels().server_traffic_secret_0,
+                                &self.handshake.randoms.client,
+                                &write_key);
+
+        #[cfg(feature = "quic")] {
+            let read_key = sess.common
+                .get_key_schedule()
+                .derive(SecretKind::ClientApplicationTrafficSecret,
+                        &self.handshake.hash_at_server_fin);
+            sess.common.quic.traffic_secrets = Some(quic::Secrets {
+                client: read_key,
+                server: write_key.clone(),
+            });
+        }
+
+        sess.common
+            .get_mut_key_schedule()
+            .current_server_traffic_secret = write_key;
+
+
+        let exporter_secret = sess.common
+            .get_key_schedule()
+            .derive(SecretKind::ExporterMasterSecret,
+                    &self.handshake.hash_at_server_fin);
+        sess.config.key_log.log(sess.common.protocol.labels().exporter_secret,
+                                &self.handshake.randoms.client,
+                                &exporter_secret);
+        sess.common
+            .get_mut_key_schedule()
+            .current_exporter_secret = exporter_secret;
+    }
+
 }
 
 impl State for ExpectTLS13Finished {
@@ -1862,6 +1923,9 @@ impl State for ExpectTLS13Finished {
         // nb. future derivations include Client Finished, but not the
         // main application data keying.
         sess.common.hs_transcript.add_message(&m);
+
+        // Send server finished.
+        self.emit_finished_tls13(sess);
 
         // Now move to using application data keys for client traffic.
         // Server traffic is already done.

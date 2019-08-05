@@ -48,7 +48,7 @@ impl KeyExchange {
             NamedGroup::secp256r1 => Some(&ring::agreement::ECDH_P256),
             NamedGroup::secp384r1 => Some(&ring::agreement::ECDH_P384),
             NamedGroup::CSIDH => Some(&ring::agreement::CSIDH),
-            //NamedGroup::KYBER512 => Some(&ring::agreement::KYBER512),
+            NamedGroup::KYBER512 => Some(&ring::agreement::KYBER512),
             _ => None,
         }
     }
