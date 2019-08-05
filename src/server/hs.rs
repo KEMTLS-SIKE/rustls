@@ -172,14 +172,14 @@ impl ExpectClientHello {
         })
     }
 
-    fn into_expect_tls13_certificate(self) -> NextState {
+    fn _into_expect_tls13_certificate(self) -> NextState {
         Box::new(ExpectTLS13Certificate {
             handshake: self.handshake,
             send_ticket: self.send_ticket,
         })
     }
 
-    fn into_expect_tls13_finished(self) -> NextState {
+    fn _into_expect_tls13_finished(self) -> NextState {
         Box::new(ExpectTLS13Finished {
             handshake: self.handshake,
             send_ticket: self.send_ticket,
@@ -1361,7 +1361,7 @@ impl State for ExpectKEMTLSClientKX {
         check_handshake_message(msg, &[HandshakeType::ClientKeyExchange])
     }
 
-    fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
+    fn handle(self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
         let client_kx = extract_handshake!(m, HandshakePayload::ClientKeyExchange).unwrap();
         sess.common.hs_transcript.add_message(&m);
 
@@ -1519,29 +1519,29 @@ impl State for ExpectTLS13CertificateVerify {
         check_handshake_message(m, &[HandshakeType::CertificateVerify])
     }
 
-    fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
-        let rc = {
-            let sig = extract_handshake!(m, HandshakePayload::CertificateVerify).unwrap();
-            let handshake_hash = sess.common.hs_transcript.get_current_hash();
-            sess.common.hs_transcript.abandon_client_auth();
-            let certs = &self.client_cert.cert_chain;
+    fn handle(self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
+        // let rc = {
+        //     let sig = extract_handshake!(m, HandshakePayload::CertificateVerify).unwrap();
+        //     let handshake_hash = sess.common.hs_transcript.get_current_hash();
+        //     sess.common.hs_transcript.abandon_client_auth();
+        //     let certs = &self.client_cert.cert_chain;
 
-            verify::verify_tls13(&certs[0],
-                                 panic!("client cert case"),
-                                 sig,
-                                 &handshake_hash,
-                                 b"TLS 1.3, client CertificateVerify\x00")
-        };
+        //     // verify::verify_tls13(&certs[0],
+        //     //                      panic!("client cert case"),
+        //     //                      sig,
+        //     //                      &handshake_hash,
+        //     //                      b"TLS 1.3, client CertificateVerify\x00")
+        // };
 
-        if let Err(e) = rc {
-            sess.common.send_fatal_alert(AlertDescription::AccessDenied);
-            return Err(e);
-        }
+        // if let Err(e) = rc {
+        //     sess.common.send_fatal_alert(AlertDescription::AccessDenied);
+        //     return Err(e);
+        // }
 
-        trace!("client CertificateVerify OK");
-        sess.client_cert_chain = Some(self.client_cert.take_chain());
+        // trace!("client CertificateVerify OK");
+        // sess.client_cert_chain = Some(self.client_cert.take_chain());
 
-        sess.common.hs_transcript.add_message(&m);
+        // sess.common.hs_transcript.add_message(&m);
         Ok(self.into_expect_tls13_finished())
     }
 }

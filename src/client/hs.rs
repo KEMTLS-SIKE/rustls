@@ -1105,11 +1105,11 @@ struct ExpectTLS13Certificate {
 }
 
 impl ExpectTLS13Certificate {
-    fn into_expect_tls13_finished(self) -> NextState {
+    fn into_expect_tls13_finished(self, certv: verify::ServerCertVerified) -> NextState {
         Box::new(ExpectTLS13Finished {
             handshake: self.handshake,
             client_auth: self.client_auth,
-            cert_verified: verify::ServerCertVerified::assertion(),
+            cert_verified: certv,
             sig_verified: verify::HandshakeSignatureValid::assertion(),
         })
     }
@@ -1189,7 +1189,7 @@ impl State for ExpectTLS13Certificate {
 
         self.emit_clientkx(sess);
 
-        Ok(self.into_expect_tls13_finished())
+        Ok(self.into_expect_tls13_finished(certv))
     }
 }
 

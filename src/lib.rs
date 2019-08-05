@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! # Rustls - a modern TLS library
 //! Rustls is a TLS library that aims to provide a good level of cryptographic security,
 //! requires no configuration to achieve that security, and provides no unsafe features or
