@@ -3,6 +3,7 @@
 use ring::{hmac, digest, hkdf};
 use crate::msgs::codec::Codec;
 use crate::error::TLSError;
+use crate::log::{warn, trace, debug};
 
 /// The kinds of secret we can extract from `KeySchedule`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -79,6 +80,7 @@ impl KeySchedule {
 
     /// Input the given secret.
     pub fn input_secret(&mut self, secret: &[u8]) {
+        trace!("Inputting secret: {:?}", secret);
         if self.need_derive_for_extract {
             let derived = self.derive(SecretKind::DerivedSecret,
                                       self.get_hash_of_empty_message());
@@ -86,6 +88,8 @@ impl KeySchedule {
         }
         self.need_derive_for_extract = true;
         let new = hkdf::extract(&self.current, secret);
+        let new_ctx = hmac::SigningContext::with_key(&new);
+        trace!("New secret: {:?}", new_ctx.sign());
         self.current = new
     }
 

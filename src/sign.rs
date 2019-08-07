@@ -388,7 +388,7 @@ impl PQKemSigner {
     /// XXX ONLY SUPPORTS CSIDH AND DOES NOT CHECK!
     fn new(der: &key::PrivateKey) -> Result<Self, ()> {
         Ok(PQKemSigner {
-            key: Arc::new(der.0.clone()[der.0.len()-74..].to_vec()),
+            key: Arc::new(der.0[24..].to_vec())
         })
     }
 }
