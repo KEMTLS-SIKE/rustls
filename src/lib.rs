@@ -215,6 +215,9 @@ mod log {
     macro_rules! error    ( ($($tt:tt)*) => {{}} );
 }
 
+#[macro_use]
+extern crate lazy_static;
+
 mod util;
 #[allow(missing_docs)]
 #[macro_use]

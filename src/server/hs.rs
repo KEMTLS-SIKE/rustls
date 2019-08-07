@@ -1866,7 +1866,6 @@ impl ExpectTLS13Finished {
             }),
         };
 
-        trace!("sending finished {:?}", m);
         sess.common.hs_transcript.add_message(&m);
         self.handshake.hash_at_server_fin = sess.common.hs_transcript.get_current_hash();
         sess.common.send_msg(m, true);

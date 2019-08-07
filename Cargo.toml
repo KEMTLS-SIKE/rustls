@@ -17,6 +17,7 @@ ring = { path = "../ring" }
 sct = { path = "../sct.rs" }
 untrusted = "0.6.2"
 webpki = { path = "../webpki" }
+lazy_static = "1"
 
 [features]
 default = ["logging"]

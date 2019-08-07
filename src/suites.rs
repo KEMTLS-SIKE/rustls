@@ -4,9 +4,17 @@ use crate::msgs::enums::{NamedGroup, ProtocolVersion};
 use crate::msgs::handshake::DecomposedSignatureScheme;
 use crate::msgs::handshake::KeyExchangeAlgorithm;
 use crate::msgs::handshake::{ClientECDHParams, ServerECDHParams};
+use lazy_static;
+use std::collections::HashMap;
+
+use std::sync::{Arc, Mutex};
 
 use ring;
 use untrusted;
+
+lazy_static! {
+    static ref KEYSHARE_CACHE: Arc<Mutex<HashMap<NamedGroup, KeyExchange>>> = Arc::new(Mutex::new(HashMap::new()));
+}
 
 /// Bulk symmetric encryption scheme used by a cipher suite.
 #[allow(non_camel_case_types)]
@@ -73,18 +81,25 @@ impl KeyExchange {
     }
 
     pub fn start_ecdhe(named_group: NamedGroup) -> Option<KeyExchange> {
-        let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
-        let rng = ring::rand::SystemRandom::new();
-        let ours = ring::agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
+        let mut cache = KEYSHARE_CACHE.lock().unwrap();
+        if let Some(keyexchange) = cache.get(&named_group) {
+            Some(keyexchange.clone())
+        } else {
+            let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
+            let rng = ring::rand::SystemRandom::new();
+            let ours = ring::agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
 
-        let pubkey = ours.compute_public_key().unwrap();
+            let pubkey = ours.compute_public_key().unwrap();
 
-        Some(KeyExchange {
-            group: named_group,
-            alg,
-            privkey: ours,
-            pubkey,
-        })
+            let kx = KeyExchange {
+                group: named_group,
+                alg,
+                privkey: ours,
+                pubkey,
+            };
+            cache.insert(named_group, kx.clone());
+            Some(kx)
+        }
     }
 
     pub fn check_client_params(&self, kx_params: &[u8]) -> bool {
