@@ -65,6 +65,12 @@ static SUPPORTED_SIG_ALGS: SignatureAlgorithms = &[&webpki::ECDSA_P256_SHA256,
                                                    &webpki::SPHINCS_HARAKA_256S_ROBUST,
                                                    &webpki::SPHINCS_HARAKA_256F_SIMPLE,
                                                    &webpki::SPHINCS_HARAKA_256F_ROBUST,
+                                                   &webpki::MQDSS_48,
+                                                   &webpki::MQDSS_64,
+                                                   &webpki::QTESLA_P_III,
+                                                   &webpki::QTESLA_P_I,
+                                                   &webpki::FALCON_512,
+                                                   &webpki::FALCON_1024,
 ];
 
 /// Marker types.  These are used to bind the fact some verification
@@ -405,6 +411,12 @@ fn convert_alg_tls13(scheme: SignatureScheme)
         SPHINCS_HARAKA_256S_ROBUST => Ok(&webpki::SPHINCS_HARAKA_256S_ROBUST),
         SPHINCS_HARAKA_256F_SIMPLE => Ok(&webpki::SPHINCS_HARAKA_256F_SIMPLE),
         SPHINCS_HARAKA_256F_ROBUST => Ok(&webpki::SPHINCS_HARAKA_256F_ROBUST),
+        MQDSS_48 => Ok(&webpki::MQDSS_48),
+        MQDSS_64 => Ok(&webpki::MQDSS_64),
+        QTESLA_P_III => Ok(&webpki::QTESLA_P_III),
+        QTESLA_P_I => Ok(&webpki::QTESLA_P_I),
+        FALCON_512 => Ok(&webpki::FALCON_512),
+        FALCON_1024 => Ok(&webpki::FALCON_1024),
 
         _ => {
             let error_msg = format!("received unsupported sig scheme {:?}", scheme);
@@ -529,5 +541,11 @@ pub fn supported_verify_schemes() -> &'static [SignatureScheme] {
         SignatureScheme::SPHINCS_HARAKA_256S_ROBUST,
         SignatureScheme::SPHINCS_HARAKA_256F_SIMPLE,
         SignatureScheme::SPHINCS_HARAKA_256F_ROBUST,
+        SignatureScheme::MQDSS_48,
+        SignatureScheme::MQDSS_64,
+        SignatureScheme::QTESLA_P_III,
+        SignatureScheme::QTESLA_P_I,
+        SignatureScheme::FALCON_512,
+        SignatureScheme::FALCON_1024,
     ]
 }

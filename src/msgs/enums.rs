@@ -81,7 +81,13 @@ enum_builder! {
         SPHINCS_HARAKA_256S_SIMPLE => 0x24,
         SPHINCS_HARAKA_256S_ROBUST => 0x25,
         SPHINCS_HARAKA_256F_SIMPLE => 0x26,
-        SPHINCS_HARAKA_256F_ROBUST => 0x27
+        SPHINCS_HARAKA_256F_ROBUST => 0x27,
+        MQDSS_48 => 0x28,
+        MQDSS_64 => 0x29,
+        QTESLA_P_I => 0x2a,
+        QTESLA_P_III => 0x2b,
+        FALCON_512 => 0x2c,
+        FALCON_1024 => 0x2d
     }
 }
 
@@ -826,7 +832,13 @@ enum_builder! {
         SPHINCS_HARAKA_256S_SIMPLE => 0xfe20,
         SPHINCS_HARAKA_256S_ROBUST => 0xfe21,
         SPHINCS_HARAKA_256F_SIMPLE => 0xfe22,
-        SPHINCS_HARAKA_256F_ROBUST => 0xfe23
+        SPHINCS_HARAKA_256F_ROBUST => 0xfe23,
+        MQDSS_48 => 0xfe24,
+        MQDSS_64 => 0xfe25,
+        QTESLA_P_I => 0xfe26,
+        QTESLA_P_III => 0xfe27,
+        FALCON_512 => 0xfe28,
+        FALCON_1024 => 0xfe29
     }
 }
 
