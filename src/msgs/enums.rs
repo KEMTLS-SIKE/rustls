@@ -341,7 +341,7 @@ enum_builder! {
     /// The `Unknown` item is used when processing unrecognised ordinals.
     @U16
     EnumName: NamedGroup;
-    EnumVal{
+    EnumVal {
         secp256r1 => 0x0017,
         secp384r1 => 0x0018,
         secp521r1 => 0x0019,
@@ -353,7 +353,35 @@ enum_builder! {
         FFDHE6144 => 0x0103,
         FFDHE8192 => 0x0104,
         CSIDH => 508,
-        KYBER512 => 509
+        KYBER512 => 509,
+        KYBER768 => 510,
+        KYBER1024 => 511,
+        KYBER51290S => 512,
+        KYBER76890S => 513,
+        KYBER102490S => 514,
+        BABYBEAR => 515,
+        MAMABEAR => 516,
+        PAPABEAR => 517,
+        LIGHTSABER => 518,
+        SABER => 519,
+        FIRESABER => 520,
+        LEDAKEMLT12 => 521,
+        LEDAKEMLT32 => 522,
+        LEDAKEMLT52 => 523,
+        NEWHOPE512CPA => 524,
+        NEWHOPE512CCA => 525,
+        NEWHOPE1024CPA => 526,
+        NEWHOPE1024CCA => 527,
+        NTRUHPS2048509 => 528,
+        NTRUHPS2048677 => 529,
+        NTRUHPS4096821 => 530,
+        NTRUHRSS701 => 531,
+        FRODOKEM640AES => 532,
+        FRODOKEM640SHAKE => 533,
+        FRODOKEM976AES => 534,
+        FRODOKEM976SHAKE => 535,
+        FRODOKEM1344AES => 536,
+        FRODOKEM1344SHAKE => 537
     }
 }
 
