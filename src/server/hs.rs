@@ -980,7 +980,11 @@ impl ExpectClientHello {
         };
 
         check_aligned_handshake(sess)?;
-        Ok(self.into_expect_kemtls_client_kx(server_key))
+        if full_handshake {
+            Ok(self.into_expect_kemtls_client_kx(server_key))
+        } else {
+            Ok(self.into_expect_tls13_finished())
+        }
         // self.emit_finished_tls13(sess);
 
         // if doing_client_auth {
