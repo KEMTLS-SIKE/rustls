@@ -1220,7 +1220,7 @@ impl State for ExpectTLS13Certificate {
 
 
         self.emit_clientkx(sess);
-        emit_finished_tls13(sess);
+        emit_finished_tls13(&self.handshake, sess);
 
         Ok(self.into_expect_tls13_finished(certv))
     }
@@ -2146,7 +2146,7 @@ fn emit_certverify_tls13(client_auth: &mut ClientAuthDetails,
     Ok(())
 }
 
-fn emit_finished_tls13(sess: &mut ClientSessionImpl) {
+fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImpl) {
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
     debug!("Current client traffic secret: {:?}", sess.common.get_key_schedule().current_client_traffic_secret);
     let verify_data = sess.common
@@ -2167,6 +2167,26 @@ fn emit_finished_tls13(sess: &mut ClientSessionImpl) {
 
     sess.common.hs_transcript.add_message(&m);
     sess.common.send_msg(m, true);
+
+    assert!(check_aligned_handshake(sess).is_ok());
+    let handshake_hash = sess.common.hs_transcript.get_current_hash();
+    let write_key = sess.common
+        .get_key_schedule()
+        .derive(SecretKind::ClientApplicationTrafficSecret, &handshake_hash);
+    sess.config.key_log.log(sess.common.protocol.labels().client_traffic_secret_0,
+                            &handshake.randoms.client,
+                            &write_key);
+    let suite = sess.common.get_suite_assert();
+    sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+    trace!("Client traffic secret on starting to write: {:?}", &write_key);
+    sess.common
+        .get_mut_key_schedule()
+        .current_client_traffic_secret = write_key;
+
+    // We need the client to start encrypting here.
+    sess.common.we_now_encrypting();
+    sess.common.start_traffic();
+
 }
 
 fn emit_end_of_early_data_tls13(sess: &mut ClientSessionImpl) {
@@ -2293,21 +2313,6 @@ impl State for ExpectTLS13Finished {
         // }
 
         /* Now move to our application traffic keys. */
-        check_aligned_handshake(sess)?;
-        let write_key = sess.common
-            .get_key_schedule()
-            .derive(SecretKind::ClientApplicationTrafficSecret, &handshake_hash);
-        sess.config.key_log.log(sess.common.protocol.labels().client_traffic_secret_0,
-                                &st.handshake.randoms.client,
-                                &write_key);
-        sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-        trace!("Client traffic secret: {:?}", &write_key);
-        sess.common
-            .get_mut_key_schedule()
-            .current_client_traffic_secret = write_key;
-
-        sess.common.we_now_encrypting();
-        sess.common.start_traffic();
 
         let st = st.into_expect_tls13_traffic(fin);
         #[cfg(feature = "quic")] {

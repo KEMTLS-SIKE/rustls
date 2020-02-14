@@ -88,30 +88,30 @@ impl fmt::Display for TLSError {
             TLSError::InappropriateMessage { ref expect_types, ref got_type } => {
                 write!(f,
                        "{}: got {:?} when expecting {}",
-                       self.description(),
+                       self.to_string(),
                        got_type,
                        join::<ContentType>(expect_types))
             }
             TLSError::InappropriateHandshakeMessage { ref expect_types, ref got_type } => {
                 write!(f,
                        "{}: got {:?} when expecting {}",
-                       self.description(),
+                       self.to_string(),
                        got_type,
                        join::<HandshakeType>(expect_types))
             }
             TLSError::CorruptMessagePayload(ref typ) => {
-                write!(f, "{} of type {:?}", self.description(), typ)
+                write!(f, "{} of type {:?}", self.to_string(), typ)
             }
             TLSError::PeerIncompatibleError(ref why) |
-            TLSError::PeerMisbehavedError(ref why) => write!(f, "{}: {}", self.description(), why),
-            TLSError::AlertReceived(ref alert) => write!(f, "{}: {:?}", self.description(), alert),
-            TLSError::WebPKIError(ref err) => write!(f, "{}: {:?}", self.description(), err),
+            TLSError::PeerMisbehavedError(ref why) => write!(f, "{}: {}", self.to_string(), why),
+            TLSError::AlertReceived(ref alert) => write!(f, "{}: {:?}", self.to_string(), alert),
+            TLSError::WebPKIError(ref err) => write!(f, "{}: {:?}", self.to_string(), err),
             TLSError::CorruptMessage |
             TLSError::NoCertificatesPresented |
             TLSError::DecryptError |
             TLSError::PeerSentOversizedRecord |
-            TLSError::HandshakeNotComplete => write!(f, "{}", self.description()),
-            _ => write!(f, "{}: {:?}", self.description(), self),
+            TLSError::HandshakeNotComplete => write!(f, "{}", self.to_string()),
+            _ => write!(f, "{}: {:?}", self.to_string(), self),
         }
     }
 }

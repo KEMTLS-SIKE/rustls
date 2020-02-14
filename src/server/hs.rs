@@ -616,7 +616,7 @@ impl ExpectClientHello {
         let cert = webpki::EndEntityCert::from(cert_in)
             .map_err(TLSError::WebPKIError)?;
         let mac_key = &cert.decapsulate(private_key, untrusted::Input::from(&their_keyshare))
-            .map_err(|_| TLSError::General("didn't work".to_owned()))?;
+            .map_err(|_| TLSError::General("didn't work to decapsulate from certverify".to_owned()))?;
         let mac_key = ring::hmac::SigningKey::new(&ring::digest::SHA384, &mac_key);
         let sig = ring::hmac::sign(&mac_key, &message);
 
@@ -983,7 +983,7 @@ impl ExpectClientHello {
         if full_handshake {
             Ok(self.into_expect_kemtls_client_kx(server_key))
         } else {
-            Ok(self.into_expect_tls13_finished())
+            Ok(self._into_expect_tls13_finished())
         }
         // self.emit_finished_tls13(sess);
 
@@ -1379,7 +1379,10 @@ impl State for ExpectKEMTLSClientKX {
         let cert = webpki::EndEntityCert::from(cert_in)
             .map_err(TLSError::WebPKIError)?;
         let key = &cert.decapsulate(private_key, untrusted::Input::from(&their_keyshare))
-            .map_err(|_| TLSError::General("didn't work".to_owned()))?;
+            .map_err(|e| {
+                debug!("{:#?}", e);
+                TLSError::General("didn't work to decapsulate".to_owned())
+            })?;
 
         // 3. Add this key into the key derivation.
         trace!("Inputting secret {:?}", key);
@@ -1946,19 +1949,15 @@ impl State for ExpectTLS13Finished {
         // main application data keying.
         sess.common.hs_transcript.add_message(&m);
 
-        // Send server finished.
-        self.emit_finished_tls13(sess);
-
         // Now move to using application data keys for client traffic.
-        // Server traffic is already done.
+        let handshake_hash = &sess.common.hs_transcript.get_current_hash();
         let read_key = sess.common
             .get_key_schedule()
-            .derive(SecretKind::ClientApplicationTrafficSecret,
-                    &self.handshake.hash_at_server_fin);
+            .derive(SecretKind::ClientApplicationTrafficSecret, handshake_hash);
         sess.config.key_log.log(sess.common.protocol.labels().client_traffic_secret_0,
                                 &self.handshake.randoms.client,
                                 &read_key);
-        trace!("Client traffic secret: {:?}", &read_key);
+        trace!("Client traffic secret after ClientFinished: {:?}", &read_key);
 
         let suite = sess.common.get_suite_assert();
         check_aligned_handshake(sess)?;
@@ -1966,6 +1965,9 @@ impl State for ExpectTLS13Finished {
         sess.common
             .get_mut_key_schedule()
             .current_client_traffic_secret = read_key;
+
+        // Send server finished.
+        self.emit_finished_tls13(sess);
 
         if self.send_ticket {
             if sess.config.ticketer.enabled() {

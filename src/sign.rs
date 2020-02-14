@@ -185,7 +185,7 @@ pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
     let options = [
         (SignatureScheme::SPHINCS_SHAKE_256_128S_SIMPLE, &signature::SPHINCS_SHAKE_256_128S_SIMPLE),
     ];
-    for (scheme, alg) in options.into_iter() {
+    for (scheme, alg) in options.iter() {
         if let Ok(scheme) = PQSchemeSigner::new(der, *scheme, alg) {
             return Ok(Box::new(scheme));
         }
