@@ -1,4 +1,3 @@
-
 use std::collections::VecDeque;
 use std::io;
 
@@ -113,7 +112,11 @@ impl MessageDeframer {
         }
 
         let full_message = self.used >= len + HEADER_SIZE;
-        if full_message { BufferContents::Valid } else { BufferContents::Partial }
+        if full_message {
+            BufferContents::Valid
+        } else {
+            BufferContents::Partial
+        }
     }
 
     /// Take a TLS message off the front of `buf`, and put it onto the back
@@ -158,8 +161,8 @@ impl MessageDeframer {
 #[cfg(test)]
 mod tests {
     use super::MessageDeframer;
-    use std::io;
     use crate::msgs;
+    use std::io;
 
     const FIRST_MESSAGE: &'static [u8] = include_bytes!("../testdata/deframer-test.1.bin");
     const SECOND_MESSAGE: &'static [u8] = include_bytes!("../testdata/deframer-test.2.bin");
@@ -198,7 +201,11 @@ mod tests {
         d.read(&mut rd)
     }
 
-    fn input_bytes_concat(d: &mut MessageDeframer, bytes1: &[u8], bytes2: &[u8]) -> io::Result<usize> {
+    fn input_bytes_concat(
+        d: &mut MessageDeframer,
+        bytes1: &[u8],
+        bytes2: &[u8],
+    ) -> io::Result<usize> {
         let mut bytes = vec![0u8; bytes1.len() + bytes2.len()];
         bytes[..bytes1.len()].clone_from_slice(bytes1);
         bytes[bytes1.len()..].clone_from_slice(bytes2);
@@ -222,8 +229,7 @@ mod tests {
                 *b = i as u8;
             }
 
-            let error = self.error.take()
-                .unwrap();
+            let error = self.error.take().unwrap();
             Err(error)
         }
     }
@@ -231,8 +237,7 @@ mod tests {
     fn input_error(d: &mut MessageDeframer) {
         let error = io::Error::from(io::ErrorKind::TimedOut);
         let mut rd = ErrorRead::new(error);
-        d.read(&mut rd)
-            .expect_err("error not propagated");
+        d.read(&mut rd).expect_err("error not propagated");
     }
 
     fn input_whole_incremental(d: &mut MessageDeframer, bytes: &[u8]) {
@@ -323,8 +328,10 @@ mod tests {
     fn test_two_in_one_read() {
         let mut d = MessageDeframer::new();
         assert_eq!(d.has_pending(), false);
-        assert_len(FIRST_MESSAGE.len() + SECOND_MESSAGE.len(),
-                   input_bytes_concat(&mut d, FIRST_MESSAGE, SECOND_MESSAGE));
+        assert_len(
+            FIRST_MESSAGE.len() + SECOND_MESSAGE.len(),
+            input_bytes_concat(&mut d, FIRST_MESSAGE, SECOND_MESSAGE),
+        );
         assert_eq!(d.frames.len(), 2);
         pop_first(&mut d);
         pop_second(&mut d);
@@ -335,8 +342,10 @@ mod tests {
     fn test_two_in_one_read_shortest_first() {
         let mut d = MessageDeframer::new();
         assert_eq!(d.has_pending(), false);
-        assert_len(FIRST_MESSAGE.len() + SECOND_MESSAGE.len(),
-                   input_bytes_concat(&mut d, SECOND_MESSAGE, FIRST_MESSAGE));
+        assert_len(
+            FIRST_MESSAGE.len() + SECOND_MESSAGE.len(),
+            input_bytes_concat(&mut d, SECOND_MESSAGE, FIRST_MESSAGE),
+        );
         assert_eq!(d.frames.len(), 2);
         pop_second(&mut d);
         pop_first(&mut d);
@@ -348,8 +357,10 @@ mod tests {
         let mut d = MessageDeframer::new();
         assert_len(3, input_bytes(&mut d, &FIRST_MESSAGE[..3]));
         input_error(&mut d);
-        assert_len(FIRST_MESSAGE.len() - 3,
-                   input_bytes(&mut d, &FIRST_MESSAGE[3..]));
+        assert_len(
+            FIRST_MESSAGE.len() - 3,
+            input_bytes(&mut d, &FIRST_MESSAGE[3..]),
+        );
         assert_eq!(d.frames.len(), 1);
         pop_first(&mut d);
         assert_eq!(d.has_pending(), false);

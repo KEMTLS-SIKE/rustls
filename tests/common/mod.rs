@@ -2,19 +2,19 @@ use std::fs::{self, File};
 use std::str;
 use tempfile;
 
-use std::sync::Arc;
 use std::io::{self, Write};
+use std::sync::Arc;
 
 use rustls;
 
+use rustls::internal::pemfile;
+use rustls::ProtocolVersion;
+use rustls::Session;
+use rustls::TLSError;
+use rustls::{AllowAnyAuthenticatedClient, NoClientAuth, RootCertStore};
+use rustls::{Certificate, PrivateKey};
 use rustls::{ClientConfig, ClientSession};
 use rustls::{ServerConfig, ServerSession};
-use rustls::Session;
-use rustls::ProtocolVersion;
-use rustls::TLSError;
-use rustls::{Certificate, PrivateKey};
-use rustls::internal::pemfile;
-use rustls::{RootCertStore, NoClientAuth, AllowAnyAuthenticatedClient};
 
 use webpki;
 
@@ -120,10 +120,10 @@ pub fn transfer(left: &mut dyn Session, right: &mut dyn Session) -> usize {
 #[derive(Clone, Copy)]
 pub enum KeyType {
     RSA,
-    ECDSA
+    ECDSA,
 }
 
-pub static ALL_KEY_TYPES: [KeyType; 2] = [ KeyType::RSA, KeyType::ECDSA ];
+pub static ALL_KEY_TYPES: [KeyType; 2] = [KeyType::RSA, KeyType::ECDSA];
 
 impl KeyType {
     fn bytes_for(&self, part: &str) -> &'static [u8] {
@@ -134,25 +134,22 @@ impl KeyType {
     }
 
     pub fn get_chain(&self) -> Vec<Certificate> {
-        pemfile::certs(&mut io::BufReader::new(self.bytes_for("end.fullchain")))
-            .unwrap()
+        pemfile::certs(&mut io::BufReader::new(self.bytes_for("end.fullchain"))).unwrap()
     }
 
     pub fn get_key(&self) -> PrivateKey {
-        pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("end.key")))
-                .unwrap()[0]
+        pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("end.key"))).unwrap()[0]
             .clone()
     }
 
     fn get_client_chain(&self) -> Vec<Certificate> {
-        pemfile::certs(&mut io::BufReader::new(self.bytes_for("client.fullchain")))
-            .unwrap()
+        pemfile::certs(&mut io::BufReader::new(self.bytes_for("client.fullchain"))).unwrap()
     }
 
     fn get_client_key(&self) -> PrivateKey {
-        pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("client.key")))
-                .unwrap()[0]
-            .clone()
+        pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("client.key"))).unwrap()
+            [0]
+        .clone()
     }
 }
 
@@ -192,21 +189,23 @@ pub fn make_client_config_with_auth(kt: KeyType) -> ClientConfig {
 }
 
 pub fn make_pair(kt: KeyType) -> (ClientSession, ServerSession) {
-    make_pair_for_configs(make_client_config(kt),
-                          make_server_config(kt))
+    make_pair_for_configs(make_client_config(kt), make_server_config(kt))
 }
 
-pub fn make_pair_for_configs(client_config: ClientConfig,
-                             server_config: ServerConfig) -> (ClientSession, ServerSession) {
-    make_pair_for_arc_configs(&Arc::new(client_config),
-                              &Arc::new(server_config))
+pub fn make_pair_for_configs(
+    client_config: ClientConfig,
+    server_config: ServerConfig,
+) -> (ClientSession, ServerSession) {
+    make_pair_for_arc_configs(&Arc::new(client_config), &Arc::new(server_config))
 }
 
-pub fn make_pair_for_arc_configs(client_config: &Arc<ClientConfig>,
-                                 server_config: &Arc<ServerConfig>) -> (ClientSession, ServerSession) {
+pub fn make_pair_for_arc_configs(
+    client_config: &Arc<ClientConfig>,
+    server_config: &Arc<ServerConfig>,
+) -> (ClientSession, ServerSession) {
     (
         ClientSession::new(client_config, dns_name("localhost")),
-        ServerSession::new(server_config)
+        ServerSession::new(server_config),
     )
 }
 
@@ -228,7 +227,10 @@ pub struct AllClientVersions {
 
 impl AllClientVersions {
     pub fn new(client_config: ClientConfig) -> AllClientVersions {
-        AllClientVersions { client_config, index: 0 }
+        AllClientVersions {
+            client_config,
+            index: 0,
+        }
     }
 }
 
@@ -243,28 +245,34 @@ impl Iterator for AllClientVersions {
             1 => {
                 config.versions = vec![ProtocolVersion::TLSv1_2];
                 Some(config)
-            },
+            }
             2 => {
                 config.versions = vec![ProtocolVersion::TLSv1_3];
                 Some(config)
-            },
-            _ => None
+            }
+            _ => None,
         }
     }
 }
 
 #[derive(PartialEq, Debug)]
-pub enum TLSErrorFromPeer { Client(TLSError), Server(TLSError) }
+pub enum TLSErrorFromPeer {
+    Client(TLSError),
+    Server(TLSError),
+}
 
-pub fn do_handshake_until_error(client: &mut ClientSession,
-                                server: &mut ServerSession)
-                               -> Result<(), TLSErrorFromPeer> {
+pub fn do_handshake_until_error(
+    client: &mut ClientSession,
+    server: &mut ServerSession,
+) -> Result<(), TLSErrorFromPeer> {
     while server.is_handshaking() || client.is_handshaking() {
         transfer(client, server);
-        server.process_new_packets()
+        server
+            .process_new_packets()
             .map_err(|err| TLSErrorFromPeer::Server(err))?;
         transfer(server, client);
-        client.process_new_packets()
+        client
+            .process_new_packets()
             .map_err(|err| TLSErrorFromPeer::Client(err))?;
     }
 
@@ -276,7 +284,7 @@ pub fn dns_name(name: &'static str) -> webpki::DNSNameRef<'_> {
 }
 
 pub struct FailsReads {
-    errkind: io::ErrorKind
+    errkind: io::ErrorKind,
 }
 
 impl FailsReads {

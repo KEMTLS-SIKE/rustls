@@ -1,8 +1,8 @@
 use std::env;
 use std::fs::{File, OpenOptions};
-use std::path::Path;
 use std::io;
 use std::io::Write;
+use std::path::Path;
 use std::sync::Mutex;
 
 #[cfg(feature = "logging")]
@@ -20,7 +20,7 @@ use crate::log::warn;
 ///
 /// See `KeyLogFile` that implements the standard `SSLKEYLOGFILE`
 /// environment variable behaviour.
-pub trait KeyLog : Send + Sync {
+pub trait KeyLog: Send + Sync {
     /// Log the given `secret`.  `client_random` is provided for
     /// session identification.  `label` describes precisely what
     /// `secret` means:
@@ -70,10 +70,7 @@ impl KeyLogFileInner {
         };
 
         #[cfg_attr(not(feature = "logging"), allow(unused_variables))]
-        let file = match OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(path) {
+        let file = match OpenOptions::new().append(true).create(true).open(path) {
             Ok(f) => Some(f),
             Err(e) => {
                 warn!("unable to create key log file '{:?}': {}", path, e);
@@ -89,7 +86,9 @@ impl KeyLogFileInner {
 
     fn try_write(&mut self, label: &str, client_random: &[u8], secret: &[u8]) -> io::Result<()> {
         let mut file = match self.file {
-            None => { return Ok(()); }
+            None => {
+                return Ok(());
+            }
             Some(ref f) => f,
         };
 
@@ -128,14 +127,16 @@ impl KeyLogFile {
 impl KeyLog for KeyLogFile {
     fn log(&self, label: &str, client_random: &[u8], secret: &[u8]) {
         #[cfg_attr(not(feature = "logging"), allow(unused_variables))]
-        match self.0.lock()
+        match self
+            .0
+            .lock()
             .unwrap()
-            .try_write(label, client_random, secret) {
-            Ok(()) => {},
+            .try_write(label, client_random, secret)
+        {
+            Ok(()) => {}
             Err(e) => {
                 warn!("error writing to key log file: {}", e);
             }
         }
     }
 }
-

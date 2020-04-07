@@ -1,27 +1,27 @@
-use crate::session::{Session, SessionCommon};
-use crate::keylog::{KeyLog, NoKeyLog};
-use crate::suites::{SupportedCipherSuite, ALL_CIPHERSUITES};
-use crate::msgs::enums::{ContentType, SignatureScheme};
-use crate::msgs::enums::{AlertDescription, HandshakeType, ProtocolVersion};
-use crate::msgs::handshake::ServerExtension;
-use crate::msgs::message::Message;
 use crate::error::TLSError;
-use crate::sign;
-use crate::verify;
 use crate::key;
-use crate::vecbuf::WriteV;
+use crate::keylog::{KeyLog, NoKeyLog};
 #[cfg(feature = "logging")]
 use crate::log::trace;
+use crate::msgs::enums::{AlertDescription, HandshakeType, ProtocolVersion};
+use crate::msgs::enums::{ContentType, SignatureScheme};
+use crate::msgs::handshake::ServerExtension;
+use crate::msgs::message::Message;
+use crate::session::{Session, SessionCommon};
+use crate::sign;
+use crate::suites::{SupportedCipherSuite, ALL_CIPHERSUITES};
+use crate::vecbuf::WriteV;
+use crate::verify;
 
 use webpki;
 
-use std::sync::Arc;
-use std::io;
 use std::fmt;
+use std::io;
+use std::sync::Arc;
 
-mod hs;
 mod common;
 pub mod handy;
+mod hs;
 
 /// A trait for the ability to store server session data.
 ///
@@ -41,7 +41,7 @@ pub mod handy;
 /// in the type system to allow implementations freedom in
 /// how to achieve interior mutability.  `Mutex` is a common
 /// choice.
-pub trait StoresServerSessions : Send + Sync {
+pub trait StoresServerSessions: Send + Sync {
     /// Store session secrets encoded in `value` against `key`,
     /// overwrites any existing value against `key`.  Returns `true`
     /// if the value was stored.
@@ -57,7 +57,7 @@ pub trait StoresServerSessions : Send + Sync {
 }
 
 /// A trait for the ability to encrypt and decrypt tickets.
-pub trait ProducesTickets : Send + Sync {
+pub trait ProducesTickets: Send + Sync {
     /// Returns true if this implementation will encrypt/decrypt
     /// tickets.  Should return false if this is a dummy
     /// implementation: the server will not send the SessionTicket
@@ -91,16 +91,17 @@ pub trait ProducesTickets : Send + Sync {
 
 /// How to choose a certificate chain and signing key for use
 /// in server authentication.
-pub trait ResolvesServerCert : Send + Sync {
+pub trait ResolvesServerCert: Send + Sync {
     /// Choose a certificate chain and matching key given any server DNS
     /// name provided via SNI, and signature schemes.
     ///
     /// The certificate chain is returned as a vec of `Certificate`s,
     /// the key is inside a `SigningKey`.
-    fn resolve(&self,
-               server_name: Option<webpki::DNSNameRef>,
-               sigschemes: &[SignatureScheme])
-               -> Option<sign::CertifiedKey>;
+    fn resolve(
+        &self,
+        server_name: Option<webpki::DNSNameRef>,
+        sigschemes: &[SignatureScheme],
+    ) -> Option<sign::CertifiedKey>;
 }
 
 /// Common configuration for a set of server sessions.
@@ -145,7 +146,7 @@ pub struct ServerConfig {
     pub key_log: Arc<dyn KeyLog>,
 
     /// Amount of early data to accept; 0 to disable.
-    #[cfg(feature = "quic")]    // TLS support unimplemented
+    #[cfg(feature = "quic")] // TLS support unimplemented
     #[doc(hidden)]
     pub max_early_data_size: u32,
 }
@@ -173,7 +174,7 @@ impl ServerConfig {
             ticketer: Arc::new(handy::NeverProducesTickets {}),
             alpn_protocols: Vec::new(),
             cert_resolver: Arc::new(handy::FailResolveChain {}),
-            versions: vec![ ProtocolVersion::TLSv1_3, ProtocolVersion::TLSv1_2 ],
+            versions: vec![ProtocolVersion::TLSv1_3, ProtocolVersion::TLSv1_2],
             verifier: client_cert_verifier,
             key_log: Arc::new(NoKeyLog {}),
             #[cfg(feature = "quic")]
@@ -212,9 +213,11 @@ impl ServerConfig {
     /// `key_der` is a DER-encoded RSA or ECDSA private key.
     ///
     /// This function fails if `key_der` is invalid.
-    pub fn set_single_cert(&mut self,
-                           cert_chain: Vec<key::Certificate>,
-                           key_der: key::PrivateKey) -> Result<(), TLSError> {
+    pub fn set_single_cert(
+        &mut self,
+        cert_chain: Vec<key::Certificate>,
+        key_der: key::PrivateKey,
+    ) -> Result<(), TLSError> {
         let resolver = handy::AlwaysResolvesChain::new(cert_chain, &key_der)?;
         self.cert_resolver = Arc::new(resolver);
         Ok(())
@@ -231,15 +234,15 @@ impl ServerConfig {
     /// and is ignored if empty.
     ///
     /// This function fails if `key_der` is invalid.
-    pub fn set_single_cert_with_ocsp_and_sct(&mut self,
-                                             cert_chain: Vec<key::Certificate>,
-                                             key_der: key::PrivateKey,
-                                             ocsp: Vec<u8>,
-                                             scts: Vec<u8>) -> Result<(), TLSError> {
-        let resolver = handy::AlwaysResolvesChain::new_with_extras(cert_chain,
-                                                                   &key_der,
-                                                                   ocsp,
-                                                                   scts)?;
+    pub fn set_single_cert_with_ocsp_and_sct(
+        &mut self,
+        cert_chain: Vec<key::Certificate>,
+        key_der: key::PrivateKey,
+        ocsp: Vec<u8>,
+        scts: Vec<u8>,
+    ) -> Result<(), TLSError> {
+        let resolver =
+            handy::AlwaysResolvesChain::new_with_extras(cert_chain, &key_der, ocsp, scts)?;
         self.cert_resolver = Arc::new(resolver);
         Ok(())
     }
@@ -273,8 +276,10 @@ impl fmt::Debug for ServerSessionImpl {
 }
 
 impl ServerSessionImpl {
-    pub fn new(server_config: &Arc<ServerConfig>, extra_exts: Vec<ServerExtension>)
-               -> ServerSessionImpl {
+    pub fn new(
+        server_config: &Arc<ServerConfig>,
+        extra_exts: Vec<ServerExtension>,
+    ) -> ServerSessionImpl {
         let mut common = SessionCommon::new(server_config.mtu, false);
         if server_config.verifier.offer_client_auth() {
             common.hs_transcript.set_client_auth_enabled();
@@ -318,7 +323,8 @@ impl ServerSessionImpl {
         // TLS1.3: drop CCS at any time during handshaking
         if self.common.is_tls13()
             && msg.is_content_type(ContentType::ChangeCipherSpec)
-            && self.is_handshaking() {
+            && self.is_handshaking()
+        {
             trace!("Dropping CCS");
             return Ok(());
         }
@@ -332,11 +338,13 @@ impl ServerSessionImpl {
         // For handshake messages, we need to join them before parsing
         // and processing.
         if self.common.handshake_joiner.want_message(&msg) {
-            self.common.handshake_joiner.take_message(msg)
+            self.common
+                .handshake_joiner
+                .take_message(msg)
                 .ok_or_else(|| {
-                            self.common.send_fatal_alert(AlertDescription::DecodeError);
-                            TLSError::CorruptMessagePayload(ContentType::Handshake)
-                            })?;
+                    self.common.send_fatal_alert(AlertDescription::DecodeError);
+                    TLSError::CorruptMessagePayload(ContentType::Handshake)
+                })?;
             return self.process_new_handshake_messages();
         }
 
@@ -359,19 +367,25 @@ impl ServerSessionImpl {
     }
 
     fn queue_unexpected_alert(&mut self) {
-        self.common.send_fatal_alert(AlertDescription::UnexpectedMessage);
+        self.common
+            .send_fatal_alert(AlertDescription::UnexpectedMessage);
     }
 
     pub fn process_main_protocol(&mut self, msg: Message) -> Result<(), TLSError> {
-        if self.common.traffic && !self.common.is_tls13() &&
-           msg.is_handshake_type(HandshakeType::ClientHello) {
-            self.common.send_warning_alert(AlertDescription::NoRenegotiation);
+        if self.common.traffic
+            && !self.common.is_tls13()
+            && msg.is_handshake_type(HandshakeType::ClientHello)
+        {
+            self.common
+                .send_warning_alert(AlertDescription::NoRenegotiation);
             return Ok(());
         }
 
         let st = self.state.take().unwrap();
-        st.check_message(&msg)
-            .map_err(|err| { self.queue_unexpected_alert(); err })?;
+        st.check_message(&msg).map_err(|err| {
+            self.queue_unexpected_alert();
+            err
+        })?;
 
         self.state = Some(st.handle(self, msg)?);
 
@@ -395,7 +409,6 @@ impl ServerSessionImpl {
                     return Err(err);
                 }
             }
-
         }
 
         Ok(())
@@ -427,7 +440,7 @@ impl ServerSessionImpl {
         self.common.get_suite()
     }
 
-    pub fn get_sni(&self)-> Option<&webpki::DNSName> {
+    pub fn get_sni(&self) -> Option<&webpki::DNSName> {
         self.sni.as_ref()
     }
 
@@ -452,7 +465,9 @@ impl ServerSession {
     /// Make a new ServerSession.  `config` controls how
     /// we behave in the TLS protocol.
     pub fn new(config: &Arc<ServerConfig>) -> ServerSession {
-        ServerSession { imp: ServerSessionImpl::new(config, vec![]) }
+        ServerSession {
+            imp: ServerSessionImpl::new(config, vec![]),
+        }
     }
 
     /// Retrieves the SNI hostname, if any, used to select the certificate and
@@ -471,7 +486,7 @@ impl ServerSession {
     ///
     /// The SNI hostname is also used to match sessions during session
     /// resumption.
-    pub fn get_sni_hostname(&self)-> Option<&str> {
+    pub fn get_sni_hostname(&self) -> Option<&str> {
         self.imp.get_sni().map(|s| s.as_ref().into())
     }
 }
@@ -526,11 +541,15 @@ impl Session for ServerSession {
         self.imp.get_protocol_version()
     }
 
-    fn export_keying_material(&self,
-                              output: &mut [u8],
-                              label: &[u8],
-                              context: Option<&[u8]>) -> Result<(), TLSError> {
-        self.imp.common.export_keying_material(output, label, context)
+    fn export_keying_material(
+        &self,
+        output: &mut [u8],
+        label: &[u8],
+        context: Option<&[u8]>,
+    ) -> Result<(), TLSError> {
+        self.imp
+            .common
+            .export_keying_material(output, label, context)
     }
 
     fn get_negotiated_ciphersuite(&self) -> Option<&'static SupportedCipherSuite> {

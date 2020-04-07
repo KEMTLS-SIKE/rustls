@@ -1,7 +1,7 @@
+use crate::client;
+use crate::key;
 use crate::msgs::enums::SignatureScheme;
 use crate::sign;
-use crate::key;
-use crate::client;
 
 use std::collections;
 use std::sync::{Arc, Mutex};
@@ -49,27 +49,24 @@ impl ClientSessionMemoryCache {
 
 impl client::StoresClientSessions for ClientSessionMemoryCache {
     fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
-        self.cache.lock()
-            .unwrap()
-            .insert(key, value);
+        self.cache.lock().unwrap().insert(key, value);
         self.limit_size();
         true
     }
 
     fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        self.cache.lock()
-            .unwrap()
-            .get(key).cloned()
+        self.cache.lock().unwrap().get(key).cloned()
     }
 }
 
 pub struct FailResolveClientCert {}
 
 impl client::ResolvesClientCert for FailResolveClientCert {
-    fn resolve(&self,
-               _acceptable_issuers: &[&[u8]],
-               _sigschemes: &[SignatureScheme])
-               -> Option<sign::CertifiedKey> {
+    fn resolve(
+        &self,
+        _acceptable_issuers: &[&[u8]],
+        _sigschemes: &[SignatureScheme],
+    ) -> Option<sign::CertifiedKey> {
         None
     }
 
@@ -81,19 +78,21 @@ impl client::ResolvesClientCert for FailResolveClientCert {
 pub struct AlwaysResolvesClientCert(sign::CertifiedKey);
 
 impl AlwaysResolvesClientCert {
-    pub fn new(chain: Vec<key::Certificate>,
-                   priv_key: &key::PrivateKey) -> AlwaysResolvesClientCert {
-        let key = sign::any_supported_type(priv_key)
-            .expect("Invalid private key");
+    pub fn new(
+        chain: Vec<key::Certificate>,
+        priv_key: &key::PrivateKey,
+    ) -> AlwaysResolvesClientCert {
+        let key = sign::any_supported_type(priv_key).expect("Invalid private key");
         AlwaysResolvesClientCert(sign::CertifiedKey::new(chain, Arc::new(key)))
     }
 }
 
 impl client::ResolvesClientCert for AlwaysResolvesClientCert {
-    fn resolve(&self,
-               _acceptable_issuers: &[&[u8]],
-               _sigschemes: &[SignatureScheme])
-               -> Option<sign::CertifiedKey> {
+    fn resolve(
+        &self,
+        _acceptable_issuers: &[&[u8]],
+        _sigschemes: &[SignatureScheme],
+    ) -> Option<sign::CertifiedKey> {
         Some(self.0.clone())
     }
 
@@ -154,11 +153,21 @@ mod test {
         assert_eq!(c.put(vec![0x09], vec![0x0a]), true);
 
         let mut count = 0;
-        if c.get(&[0x01]).is_some() { count += 1; }
-        if c.get(&[0x03]).is_some() { count += 1; }
-        if c.get(&[0x05]).is_some() { count += 1; }
-        if c.get(&[0x07]).is_some() { count += 1; }
-        if c.get(&[0x09]).is_some() { count += 1; }
+        if c.get(&[0x01]).is_some() {
+            count += 1;
+        }
+        if c.get(&[0x03]).is_some() {
+            count += 1;
+        }
+        if c.get(&[0x05]).is_some() {
+            count += 1;
+        }
+        if c.get(&[0x07]).is_some() {
+            count += 1;
+        }
+        if c.get(&[0x09]).is_some() {
+            count += 1;
+        }
 
         assert_eq!(count, 4);
     }

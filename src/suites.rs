@@ -13,7 +13,8 @@ use ring;
 use untrusted;
 
 lazy_static! {
-    static ref KEYSHARE_CACHE: Arc<Mutex<HashMap<NamedGroup, KeyExchange>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref KEYSHARE_CACHE: Arc<Mutex<HashMap<NamedGroup, KeyExchange>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 }
 
 /// Bulk symmetric encryption scheme used by a cipher suite.
@@ -117,22 +118,17 @@ impl KeyExchange {
     }
 
     pub fn complete_server(self, kx_params: &[u8]) -> Option<KeyExchangeResult> {
-        self.decode_client_params(kx_params).and_then(
-            |x| self.decapsulate(&x.public.0)
-        )
+        self.decode_client_params(kx_params)
+            .and_then(|x| self.decapsulate(&x.public.0))
     }
 
     pub fn decapsulate(self, peer_key: &[u8]) -> Option<KeyExchangeResult> {
-        let secret = ring::agreement::decapsulate(
-            self.privkey,
-            untrusted::Input::from(peer_key),
-            (),
-            |v| {
+        let secret =
+            ring::agreement::decapsulate(self.privkey, untrusted::Input::from(peer_key), (), |v| {
                 let mut r = Vec::new();
                 r.extend_from_slice(v);
                 Ok(r)
-            },
-        );
+            });
         if secret.is_err() {
             return None;
         }

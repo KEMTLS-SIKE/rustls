@@ -1,49 +1,45 @@
-use crate::msgs::enums::{ContentType, HandshakeType, ExtensionType, SignatureScheme};
-use crate::msgs::enums::{Compression, ProtocolVersion, AlertDescription, NamedGroup};
-use crate::msgs::message::{Message, MessagePayload};
-use crate::msgs::base::{Payload, PayloadU8};
-use crate::msgs::handshake::{HandshakePayload, HandshakeMessagePayload, ClientHelloPayload};
-use crate::msgs::handshake::{SessionID, Random, ServerHelloPayload};
-use crate::msgs::handshake::{ClientExtension, HasServerExtensions};
-use crate::msgs::handshake::DecomposedSignatureScheme;
-use crate::msgs::handshake::{KeyShareEntry, EncryptedExtensions};
-use crate::msgs::handshake::{ECPointFormatList, SupportedPointFormats};
-use crate::msgs::handshake::{ProtocolNameList, ConvertProtocolNameList};
-use crate::msgs::handshake::{CertificatePayloadTLS13, CertificateEntry};
-use crate::msgs::handshake::ServerKeyExchangePayload;
-use crate::msgs::handshake::DigitallySignedStruct;
-use crate::msgs::handshake::{PresharedKeyIdentity, PresharedKeyOffer, HelloRetryRequest};
-use crate::msgs::handshake::{CertificateStatusRequest, SCTList};
-use crate::msgs::enums::{ClientCertificateType, PSKKeyExchangeMode, ECPointFormat};
-use crate::msgs::codec::{Codec, Reader};
-use crate::msgs::persist;
-use crate::msgs::ccs::ChangeCipherSpecPayload;
-use crate::client::ClientSessionImpl;
-use crate::session::SessionSecrets;
-use crate::key_schedule::{KeySchedule, SecretKind};
 use crate::cipher;
-use crate::suites;
+use crate::client::ClientSessionImpl;
+use crate::error::TLSError;
+use crate::handshake::{check_handshake_message, check_message};
 use crate::hash_hs;
-use crate::verify;
-use crate::sign;
-use crate::rand;
-use crate::ticketer;
+use crate::key_schedule::{KeySchedule, SecretKind};
 #[cfg(feature = "logging")]
 use crate::log::{debug, trace, warn};
-use crate::error::TLSError;
-use crate::handshake::{check_message, check_handshake_message};
+use crate::msgs::base::{Payload, PayloadU8};
+use crate::msgs::ccs::ChangeCipherSpecPayload;
+use crate::msgs::codec::{Codec, Reader};
+use crate::msgs::enums::{AlertDescription, Compression, NamedGroup, ProtocolVersion};
+use crate::msgs::enums::{ClientCertificateType, ECPointFormat, PSKKeyExchangeMode};
+use crate::msgs::enums::{ContentType, ExtensionType, HandshakeType, SignatureScheme};
+use crate::msgs::handshake::DecomposedSignatureScheme;
+use crate::msgs::handshake::DigitallySignedStruct;
+use crate::msgs::handshake::ServerKeyExchangePayload;
+use crate::msgs::handshake::{CertificateEntry, CertificatePayloadTLS13};
+use crate::msgs::handshake::{CertificateStatusRequest, SCTList};
+use crate::msgs::handshake::{ClientExtension, HasServerExtensions};
+use crate::msgs::handshake::{ClientHelloPayload, HandshakeMessagePayload, HandshakePayload};
+use crate::msgs::handshake::{ConvertProtocolNameList, ProtocolNameList};
+use crate::msgs::handshake::{ECPointFormatList, SupportedPointFormats};
+use crate::msgs::handshake::{EncryptedExtensions, KeyShareEntry};
+use crate::msgs::handshake::{HelloRetryRequest, PresharedKeyIdentity, PresharedKeyOffer};
+use crate::msgs::handshake::{Random, ServerHelloPayload, SessionID};
+use crate::msgs::message::{Message, MessagePayload};
+use crate::msgs::persist;
+use crate::rand;
+use crate::session::SessionSecrets;
+use crate::sign;
+use crate::suites;
+use crate::ticketer;
+use crate::verify;
 #[cfg(feature = "quic")]
-use crate::{
-    quic,
-    msgs::base::PayloadU16,
-    session::Protocol
-};
+use crate::{msgs::base::PayloadU16, quic, session::Protocol};
 
-use crate::client::common::{ServerCertDetails, ServerKXDetails, HandshakeDetails};
-use crate::client::common::{ClientHelloDetails, ReceivedTicketDetails, ClientAuthDetails};
+use crate::client::common::{ClientAuthDetails, ClientHelloDetails, ReceivedTicketDetails};
+use crate::client::common::{HandshakeDetails, ServerCertDetails, ServerKXDetails};
 
-use std::mem;
 use ring::constant_time;
+use std::mem;
 use webpki;
 
 macro_rules! extract_handshake(
@@ -80,7 +76,8 @@ pub trait State {
 }
 
 fn illegal_param(sess: &mut ClientSessionImpl, why: &str) -> TLSError {
-    sess.common.send_fatal_alert(AlertDescription::IllegalParameter);
+    sess.common
+        .send_fatal_alert(AlertDescription::IllegalParameter);
     TLSError::PeerMisbehavedError(why.to_string())
 }
 
@@ -92,8 +89,10 @@ fn check_aligned_handshake(sess: &mut ClientSessionImpl) -> Result<(), TLSError>
     }
 }
 
-fn find_session(sess: &mut ClientSessionImpl, dns_name: webpki::DNSNameRef)
-                -> Option<persist::ClientSessionValue> {
+fn find_session(
+    sess: &mut ClientSessionImpl,
+    dns_name: webpki::DNSNameRef,
+) -> Option<persist::ClientSessionValue> {
     let key = persist::ClientSessionKey::session_for_dns_name(dns_name);
     let key_buf = key.get_encoding();
 
@@ -110,7 +109,8 @@ fn find_session(sess: &mut ClientSessionImpl, dns_name: webpki::DNSNameRef)
         if result.has_expired(ticketer::timebase()) {
             None
         } else {
-            #[cfg(feature = "quic")] {
+            #[cfg(feature = "quic")]
+            {
                 if sess.common.protocol == Protocol::Quic {
                     let params = PayloadU16::read(&mut reader)?;
                     sess.common.quic.params = Some(params.0);
@@ -134,7 +134,9 @@ fn find_kx_hint(sess: &mut ClientSessionImpl, dns_name: webpki::DNSNameRef) -> O
 fn save_kx_hint(sess: &mut ClientSessionImpl, dns_name: webpki::DNSNameRef, group: NamedGroup) {
     let key = persist::ClientSessionKey::hint_for_dns_name(dns_name);
 
-    sess.config.session_persistence.put(key.get_encoding(), group.get_encoding());
+    sess.config
+        .session_persistence
+        .put(key.get_encoding(), group.get_encoding());
 }
 
 /// If we have a ticket, we use the sessionid as a signal that we're
@@ -149,18 +151,25 @@ fn randomise_sessionid_for_ticket(csv: &mut persist::ClientSessionValue) {
 
 /// This implements the horrifying TLS1.3 hack where PSK binders have a
 /// data dependency on the message they are contained within.
-pub fn fill_in_psk_binder(sess: &mut ClientSessionImpl,
-                          handshake: &mut HandshakeDetails,
-                          hmp: &mut HandshakeMessagePayload) {
+pub fn fill_in_psk_binder(
+    sess: &mut ClientSessionImpl,
+    handshake: &mut HandshakeDetails,
+    hmp: &mut HandshakeMessagePayload,
+) {
     // We need to know the hash function of the suite we're trying to resume into.
     let resuming = handshake.resuming_session.as_ref().unwrap();
-    let suite_hash = sess.find_cipher_suite(resuming.cipher_suite).unwrap().get_hash();
+    let suite_hash = sess
+        .find_cipher_suite(resuming.cipher_suite)
+        .unwrap()
+        .get_hash();
 
     // The binder is calculated over the clienthello, but doesn't include itself or its
     // length, or the length of its container.
     let binder_plaintext = hmp.get_encoding_for_binder_signing();
-    let handshake_hash =
-        sess.common.hs_transcript.get_hash_given(suite_hash, &binder_plaintext);
+    let handshake_hash = sess
+        .common
+        .hs_transcript
+        .get_hash_given(suite_hash, &binder_plaintext);
 
     let mut empty_hash_ctx = hash_hs::HandshakeHash::new();
     empty_hash_ctx.start_hash(suite_hash);
@@ -199,11 +208,12 @@ impl InitialState {
     }
 }
 
-
-pub fn start_handshake(sess: &mut ClientSessionImpl, host_name: webpki::DNSName,
-                       extra_exts: Vec<ClientExtension>) -> NextState {
-    InitialState::new(host_name, extra_exts)
-        .emit_initial_client_hello(sess)
+pub fn start_handshake(
+    sess: &mut ClientSessionImpl,
+    host_name: webpki::DNSName,
+    extra_exts: Vec<ClientExtension>,
+) -> NextState {
+    InitialState::new(host_name, extra_exts).emit_initial_client_hello(sess)
 }
 
 struct ExpectServerHello {
@@ -217,8 +227,11 @@ struct ExpectServerHello {
 struct ExpectServerHelloOrHelloRetryRequest(ExpectServerHello);
 
 fn emit_fake_ccs(hs: &mut HandshakeDetails, sess: &mut ClientSessionImpl) {
-    #[cfg(feature = "quic")] {
-        if let Protocol::Quic = sess.common.protocol { return; }
+    #[cfg(feature = "quic")]
+    {
+        if let Protocol::Quic = sess.common.protocol {
+            return;
+        }
     }
 
     if hs.sent_tls13_fake_ccs {
@@ -228,14 +241,16 @@ fn emit_fake_ccs(hs: &mut HandshakeDetails, sess: &mut ClientSessionImpl) {
     let m = Message {
         typ: ContentType::ChangeCipherSpec,
         version: ProtocolVersion::TLSv1_2,
-        payload: MessagePayload::ChangeCipherSpec(ChangeCipherSpecPayload {})
+        payload: MessagePayload::ChangeCipherSpec(ChangeCipherSpecPayload {}),
     };
     sess.common.send_msg(m, false);
     hs.sent_tls13_fake_ccs = true;
 }
 
-fn compatible_suite(sess: &ClientSessionImpl,
-                    resuming_suite: Option<&suites::SupportedCipherSuite>) -> bool {
+fn compatible_suite(
+    sess: &ClientSessionImpl,
+    resuming_suite: Option<&suites::SupportedCipherSuite>,
+) -> bool {
     match resuming_suite {
         Some(resuming_suite) => {
             if let Some(suite) = sess.common.get_suite() {
@@ -244,14 +259,16 @@ fn compatible_suite(sess: &ClientSessionImpl,
                 true
             }
         }
-        None => false
+        None => false,
     }
 }
 
-fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
-                               mut handshake: HandshakeDetails,
-                               mut hello: ClientHelloDetails,
-                               retryreq: Option<&HelloRetryRequest>) -> NextState {
+fn emit_client_hello_for_retry(
+    sess: &mut ClientSessionImpl,
+    mut handshake: HandshakeDetails,
+    mut hello: ClientHelloDetails,
+    retryreq: Option<&HelloRetryRequest>,
+) -> NextState {
     // Do we have a SessionID or ticket cached for this host?
     handshake.resuming_session = find_session(sess, handshake.dns_name.as_ref());
     let (session_id, ticket, resume_version) = if handshake.resuming_session.is_some() {
@@ -260,7 +277,11 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
             randomise_sessionid_for_ticket(resuming);
         }
         debug!("Resuming session");
-        (resuming.session_id, resuming.ticket.0.clone(), resuming.version)
+        (
+            resuming.session_id,
+            resuming.ticket.0.clone(),
+            resuming.version,
+        )
     } else {
         debug!("Not resuming any session");
         (SessionID::empty(), Vec::new(), ProtocolVersion::Unknown(0))
@@ -287,17 +308,21 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         // - if not, we might have a hint of what the server supports
         // - if not, send just X25519.
         //
-        let groups = retryreq.and_then(|req| req.get_requested_key_share_group())
+        let groups = retryreq
+            .and_then(|req| req.get_requested_key_share_group())
             .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
-            .or_else(|| Some(NamedGroup::CSIDH)) // XXX DEFAULT KEM
-            .map(|grp| vec![ grp ])
+            .or_else(|| Some(NamedGroup::KYBER512)) // XXX DEFAULT KEM
+            .map(|grp| vec![grp])
             .unwrap();
 
         for group in groups {
             // in reply to HelloRetryRequest, we must not alter any existing key
             // shares
             if let Some(already_offered_share) = hello.take_key_share(group) {
-                key_shares.push(KeyShareEntry::new(group, already_offered_share.pubkey.as_ref()));
+                key_shares.push(KeyShareEntry::new(
+                    group,
+                    already_offered_share.pubkey.as_ref(),
+                ));
                 hello.offered_key_shares.push(already_offered_share);
                 continue;
             }
@@ -316,11 +341,19 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     if sess.config.enable_sni {
         exts.push(ClientExtension::make_sni(handshake.dns_name.as_ref()));
     }
-    exts.push(ClientExtension::ECPointFormats(ECPointFormatList::supported()));
-    exts.push(ClientExtension::NamedGroups(suites::KeyExchange::supported_groups().to_vec()));
-    exts.push(ClientExtension::SignatureAlgorithms(verify::supported_verify_schemes().to_vec()));
+    exts.push(ClientExtension::ECPointFormats(
+        ECPointFormatList::supported(),
+    ));
+    exts.push(ClientExtension::NamedGroups(
+        suites::KeyExchange::supported_groups().to_vec(),
+    ));
+    exts.push(ClientExtension::SignatureAlgorithms(
+        verify::supported_verify_schemes().to_vec(),
+    ));
     exts.push(ClientExtension::ExtendedMasterSecretRequest);
-    exts.push(ClientExtension::CertificateStatusRequest(CertificateStatusRequest::build_ocsp()));
+    exts.push(ClientExtension::CertificateStatusRequest(
+        CertificateStatusRequest::build_ocsp(),
+    ));
 
     if sess.config.ct_logs.is_some() {
         exts.push(ClientExtension::SignedCertificateTimestampRequest);
@@ -337,26 +370,31 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     if support_tls13 && sess.config.enable_tickets {
         // We could support PSK_KE here too. Such connections don't
         // have forward secrecy, and are similar to TLS1.2 resumption.
-        let psk_modes = vec![ PSKKeyExchangeMode::PSK_DHE_KE ];
+        let psk_modes = vec![PSKKeyExchangeMode::PSK_DHE_KE];
         exts.push(ClientExtension::PresharedKeyModes(psk_modes));
     }
 
     if !sess.config.alpn_protocols.is_empty() {
-        exts.push(ClientExtension::Protocols(ProtocolNameList::from_slices(&sess.config
-            .alpn_protocols
-            .iter()
-            .map(|proto| &proto[..])
-            .collect::<Vec<_>>()
+        exts.push(ClientExtension::Protocols(ProtocolNameList::from_slices(
+            &sess
+                .config
+                .alpn_protocols
+                .iter()
+                .map(|proto| &proto[..])
+                .collect::<Vec<_>>(),
         )));
     }
 
     // Extra extensions must be placed before the PSK extension
     exts.extend(handshake.extra_exts.iter().cloned());
 
-    let fill_in_binder = if support_tls13 && sess.config.enable_tickets &&
-                            resume_version == ProtocolVersion::TLSv1_3 &&
-                            !ticket.is_empty() {
-        let resuming_suite = handshake.resuming_session
+    let fill_in_binder = if support_tls13
+        && sess.config.enable_tickets
+        && resume_version == ProtocolVersion::TLSv1_3
+        && !ticket.is_empty()
+    {
+        let resuming_suite = handshake
+            .resuming_session
             .as_ref()
             .and_then(|resume| sess.find_cipher_suite(resume.cipher_suite));
 
@@ -378,10 +416,11 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
             // Include an empty binder. It gets filled in below because it depends on
             // the message it's contained in (!!!).
             let (obfuscated_ticket_age, suite) = {
-                let resuming = handshake.resuming_session
-                    .as_ref()
-                    .unwrap();
-                (resuming.get_obfuscated_ticket_age(ticketer::timebase()), resuming.cipher_suite)
+                let resuming = handshake.resuming_session.as_ref().unwrap();
+                (
+                    resuming.get_obfuscated_ticket_age(ticketer::timebase()),
+                    resuming.cipher_suite,
+                )
             };
 
             let binder_len = sess.find_cipher_suite(suite).unwrap().get_hash().output_len;
@@ -407,9 +446,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     };
 
     // Note what extensions we sent.
-    hello.sent_extensions = exts.iter()
-        .map(|ext| ext.get_type())
-        .collect();
+    hello.sent_extensions = exts.iter().map(|ext| ext.get_type()).collect();
 
     let mut chp = HandshakeMessagePayload {
         typ: HandshakeType::ClientHello,
@@ -457,21 +494,31 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         emit_fake_ccs(&mut handshake, sess);
 
         // It is safe to call unwrap() because fill_in_binder is true.
-        let resuming_suite = handshake.resuming_session
+        let resuming_suite = handshake
+            .resuming_session
             .as_ref()
-            .and_then(|resume| sess.find_cipher_suite(resume.cipher_suite)).unwrap();
+            .and_then(|resume| sess.find_cipher_suite(resume.cipher_suite))
+            .unwrap();
 
-        let client_hello_hash = sess.common.hs_transcript.get_hash_given(resuming_suite.get_hash(), &[]);
-        let client_early_traffic_secret = sess.common
+        let client_hello_hash = sess
+            .common
+            .hs_transcript
+            .get_hash_given(resuming_suite.get_hash(), &[]);
+        let client_early_traffic_secret = sess
+            .common
             .get_key_schedule()
             .derive(SecretKind::ClientEarlyTrafficSecret, &client_hello_hash);
         // Set early data encryption key
-        sess.common
-            .set_message_encrypter(cipher::new_tls13_write(resuming_suite, &client_early_traffic_secret));
+        sess.common.set_message_encrypter(cipher::new_tls13_write(
+            resuming_suite,
+            &client_early_traffic_secret,
+        ));
 
-        sess.config.key_log.log(sess.common.protocol.labels().client_early_traffic_secret,
-                                &handshake.randoms.client,
-                                &client_early_traffic_secret);
+        sess.config.key_log.log(
+            sess.common.protocol.labels().client_early_traffic_secret,
+            &handshake.randoms.client,
+            &client_early_traffic_secret,
+        );
 
         #[cfg(feature = "quic")]
         {
@@ -485,7 +532,8 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     }
 
     let next = ExpectServerHello {
-        handshake, hello,
+        handshake,
+        hello,
         server_cert: ServerCertDetails::new(),
         may_send_cert_status: false,
         must_issue_new_ticket: false,
@@ -514,26 +562,34 @@ static DISALLOWED_TLS13_EXTS: &'static [ExtensionType] = &[
     ExtensionType::ExtendedMasterSecret,
 ];
 
-fn validate_server_hello_tls13(sess: &mut ClientSessionImpl,
-                               server_hello: &ServerHelloPayload)
-                               -> Result<(), TLSError> {
+fn validate_server_hello_tls13(
+    sess: &mut ClientSessionImpl,
+    server_hello: &ServerHelloPayload,
+) -> Result<(), TLSError> {
     for ext in &server_hello.extensions {
         if !ALLOWED_PLAINTEXT_EXTS.contains(&ext.get_type()) {
-            sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
-            return Err(TLSError::PeerMisbehavedError("server sent unexpected cleartext ext"
-                                                     .to_string()));
+            sess.common
+                .send_fatal_alert(AlertDescription::UnsupportedExtension);
+            return Err(TLSError::PeerMisbehavedError(
+                "server sent unexpected cleartext ext".to_string(),
+            ));
         }
     }
 
     Ok(())
 }
 
-fn process_alpn_protocol(sess: &mut ClientSessionImpl,
-                         proto: Option<&[u8]>)
-                         -> Result<(), TLSError> {
+fn process_alpn_protocol(
+    sess: &mut ClientSessionImpl,
+    proto: Option<&[u8]>,
+) -> Result<(), TLSError> {
     sess.alpn_protocol = proto.map(|s| s.to_owned());
-    if sess.alpn_protocol.is_some() &&
-        !sess.config.alpn_protocols.contains(sess.alpn_protocol.as_ref().unwrap()) {
+    if sess.alpn_protocol.is_some()
+        && !sess
+            .config
+            .alpn_protocols
+            .contains(sess.alpn_protocol.as_ref().unwrap())
+    {
         return Err(illegal_param(sess, "server sent non-offered ALPN protocol"));
     }
     debug!("ALPN protocol is {:?}", sess.alpn_protocol);
@@ -541,32 +597,37 @@ fn process_alpn_protocol(sess: &mut ClientSessionImpl,
 }
 
 impl ExpectServerHello {
-    fn start_handshake_traffic(&mut self,
-                               sess: &mut ClientSessionImpl,
-                               server_hello: &ServerHelloPayload)
-                               -> Result<(), TLSError> {
+    fn start_handshake_traffic(
+        &mut self,
+        sess: &mut ClientSessionImpl,
+        server_hello: &ServerHelloPayload,
+    ) -> Result<(), TLSError> {
         let suite = sess.common.get_suite_assert();
 
         if let Some(selected_psk) = server_hello.get_psk_index() {
             if let Some(ref resuming) = self.handshake.resuming_session {
                 let resume_from_suite = sess.find_cipher_suite(resuming.cipher_suite).unwrap();
                 if !resume_from_suite.can_resume_to(suite) {
-                    return Err(TLSError::PeerMisbehavedError("server resuming incompatible suite"
-                        .to_string()));
+                    return Err(TLSError::PeerMisbehavedError(
+                        "server resuming incompatible suite".to_string(),
+                    ));
                 }
 
                 if selected_psk != 0 {
-                    return Err(TLSError::PeerMisbehavedError("server selected invalid psk"
-                        .to_string()));
+                    return Err(TLSError::PeerMisbehavedError(
+                        "server selected invalid psk".to_string(),
+                    ));
                 }
 
                 debug!("Resuming using PSK");
-                // The key schedule has been initialized and set in fill_in_psk()
-                // Server must be using the resumption suite, otherwise set_suite()
-                // in ExpectServerHello::handle() would fail.
-                // key_schedule.input_secret(&resuming.master_secret.0);
+            // The key schedule has been initialized and set in fill_in_psk()
+            // Server must be using the resumption suite, otherwise set_suite()
+            // in ExpectServerHello::handle() would fail.
+            // key_schedule.input_secret(&resuming.master_secret.0);
             } else {
-                return Err(TLSError::PeerMisbehavedError("server selected unoffered psk".to_string()));
+                return Err(TLSError::PeerMisbehavedError(
+                    "server selected unoffered psk".to_string(),
+                ));
             }
         } else {
             debug!("Not resuming");
@@ -579,28 +640,38 @@ impl ExpectServerHello {
             self.handshake.resuming_session.take();
         }
 
-        let their_key_share = server_hello.get_key_share()
-            .ok_or_else(|| {
-                sess.common.send_fatal_alert(AlertDescription::MissingExtension);
-                TLSError::PeerMisbehavedError("missing key share".to_string())
-                })?;
+        let their_key_share = server_hello.get_key_share().ok_or_else(|| {
+            sess.common
+                .send_fatal_alert(AlertDescription::MissingExtension);
+            TLSError::PeerMisbehavedError("missing key share".to_string())
+        })?;
 
         // XXX: Get the shared secret for the first phase of encrypting traffic.
-        let our_key_share = self.hello.find_key_share(their_key_share.group)
+        let our_key_share = self
+            .hello
+            .find_key_share(their_key_share.group)
             .ok_or_else(|| illegal_param(sess, "wrong group for key share"))?;
-        let shared = our_key_share.clone().decapsulate(&their_key_share.payload.0)
-            .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed"
-                                                         .to_string()))?;
+        let shared = our_key_share
+            .clone()
+            .decapsulate(&their_key_share.payload.0)
+            .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
         println!("Shared secret = {:?}", shared.premaster_secret);
 
-        save_kx_hint(sess, self.handshake.dns_name.as_ref(), their_key_share.group);
-        sess.common.get_mut_key_schedule().input_secret(&shared.premaster_secret);
+        save_kx_hint(
+            sess,
+            self.handshake.dns_name.as_ref(),
+            their_key_share.group,
+        );
+        sess.common
+            .get_mut_key_schedule()
+            .input_secret(&shared.premaster_secret);
 
         check_aligned_handshake(sess)?;
 
         self.handshake.hash_at_client_recvd_server_hello =
             sess.common.hs_transcript.get_current_hash();
 
+        /*
         if !sess.early_data.is_enabled() {
             // Set the client encryption key for handshakes if early data is not used
             let write_key = sess.common.get_key_schedule()
@@ -611,35 +682,53 @@ impl ExpectServerHello {
                                  &self.handshake.randoms.client,
                                  &write_key);
             sess.common.get_mut_key_schedule().current_client_traffic_secret = write_key;
-        }
+        }*/
 
-        let read_key = sess.common.get_key_schedule()
-            .derive(SecretKind::ServerHandshakeTrafficSecret,
-                    &self.handshake.hash_at_client_recvd_server_hello);
-        sess.common.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
-        sess.config.key_log.log(sess.common.protocol.labels().server_handshake_traffic_secret,
-                                &self.handshake.randoms.client,
-                                &read_key);
-        sess.common.get_mut_key_schedule().current_server_traffic_secret = read_key;
+        let read_key = sess.common.get_key_schedule().derive(
+            SecretKind::ServerHandshakeTrafficSecret,
+            &self.handshake.hash_at_client_recvd_server_hello,
+        );
+        sess.common
+            .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
+        sess.config.key_log.log(
+            sess.common
+                .protocol
+                .labels()
+                .server_handshake_traffic_secret,
+            &self.handshake.randoms.client,
+            &read_key,
+        );
+        sess.common
+            .get_mut_key_schedule()
+            .current_server_traffic_secret = read_key;
 
         /* Now move to our first set of traffic keys. */
         check_aligned_handshake(sess)?;
-        let write_key = sess.common
-            .get_key_schedule()
-            .derive(SecretKind::ClientHandshakeTrafficSecret, &self.handshake.hash_at_client_recvd_server_hello);
-        sess.config.key_log.log(sess.common.protocol.labels().server_handshake_traffic_secret,
-                                &self.handshake.randoms.client,
-                                &write_key);
+        let write_key = sess.common.get_key_schedule().derive(
+            SecretKind::ClientHandshakeTrafficSecret,
+            &self.handshake.hash_at_client_recvd_server_hello,
+        );
+        sess.config.key_log.log(
+            sess.common
+                .protocol
+                .labels()
+                .client_handshake_traffic_secret,
+            &self.handshake.randoms.client,
+            &write_key,
+        );
         println!("Client write key: {:?}", &write_key);
-        sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+        sess.common
+            .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
 
-        #[cfg(feature = "quic")] {
+        #[cfg(feature = "quic")]
+        {
             let key_schedule = sess.common.key_schedule.as_ref().unwrap();
             let client = if sess.early_data.is_enabled() {
                 // Traffic secret wasn't computed and stored above, so do it here.
-                sess.common.get_key_schedule()
-                    .derive(SecretKind::ClientHandshakeTrafficSecret,
-                            &self.handshake.hash_at_client_recvd_server_hello)
+                sess.common.get_key_schedule().derive(
+                    SecretKind::ClientHandshakeTrafficSecret,
+                    &self.handshake.hash_at_client_recvd_server_hello,
+                )
             } else {
                 key_schedule.current_client_traffic_secret.clone()
             };
@@ -660,9 +749,11 @@ impl ExpectServerHello {
         })
     }
 
-    fn into_expect_tls12_new_ticket_resume(self,
-                                           certv: verify::ServerCertVerified,
-                                           sigv: verify::HandshakeSignatureValid) -> NextState {
+    fn into_expect_tls12_new_ticket_resume(
+        self,
+        certv: verify::ServerCertVerified,
+        sigv: verify::HandshakeSignatureValid,
+    ) -> NextState {
         Box::new(ExpectTLS12NewTicket {
             handshake: self.handshake,
             resuming: true,
@@ -671,9 +762,11 @@ impl ExpectServerHello {
         })
     }
 
-    fn into_expect_tls12_ccs_resume(self,
-                                    certv: verify::ServerCertVerified,
-                                    sigv: verify::HandshakeSignatureValid) -> NextState {
+    fn into_expect_tls12_ccs_resume(
+        self,
+        certv: verify::ServerCertVerified,
+        sigv: verify::HandshakeSignatureValid,
+    ) -> NextState {
         Box::new(ExpectTLS12CCS {
             handshake: self.handshake,
             ticket: ReceivedTicketDetails::new(),
@@ -706,8 +799,9 @@ impl State for ExpectServerHello {
         let tls13_supported = sess.config.supports_version(TLSv1_3);
 
         let server_version = if server_hello.legacy_version == TLSv1_2 {
-            server_hello.get_supported_versions()
-              .unwrap_or(server_hello.legacy_version)
+            server_hello
+                .get_supported_versions()
+                .unwrap_or(server_hello.legacy_version)
         } else {
             server_hello.legacy_version
         };
@@ -720,19 +814,25 @@ impl State for ExpectServerHello {
                 if sess.early_data.is_enabled() && sess.common.early_traffic {
                     // The client must fail with a dedicated error code if the server
                     // responds with TLS 1.2 when offering 0-RTT.
-                    return Err(TLSError::PeerMisbehavedError("server chose v1.2 when offering 0-rtt"
-                        .to_string()));
+                    return Err(TLSError::PeerMisbehavedError(
+                        "server chose v1.2 when offering 0-rtt".to_string(),
+                    ));
                 }
                 sess.common.negotiated_version = Some(TLSv1_2);
 
                 if server_hello.get_supported_versions().is_some() {
-                    return Err(illegal_param(sess, "server chose v1.2 using v1.3 extension"));
+                    return Err(illegal_param(
+                        sess,
+                        "server chose v1.2 using v1.3 extension",
+                    ));
                 }
             }
             _ => {
-                sess.common.send_fatal_alert(AlertDescription::ProtocolVersion);
-                return Err(TLSError::PeerIncompatibleError("server does not support TLS v1.2/v1.3"
-                    .to_string()));
+                sess.common
+                    .send_fatal_alert(AlertDescription::ProtocolVersion);
+                return Err(TLSError::PeerIncompatibleError(
+                    "server does not support TLS v1.2/v1.3".to_string(),
+                ));
             }
         };
 
@@ -742,14 +842,21 @@ impl State for ExpectServerHello {
 
         if server_hello.has_duplicate_extension() {
             sess.common.send_fatal_alert(AlertDescription::DecodeError);
-            return Err(TLSError::PeerMisbehavedError("server sent duplicate extensions".to_string()));
+            return Err(TLSError::PeerMisbehavedError(
+                "server sent duplicate extensions".to_string(),
+            ));
         }
 
-        let allowed_unsolicited = [ ExtensionType::RenegotiationInfo ];
-        if self.hello.server_sent_unsolicited_extensions(&server_hello.extensions,
-                                                         &allowed_unsolicited) {
-            sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
-            return Err(TLSError::PeerMisbehavedError("server sent unsolicited extension".to_string()));
+        let allowed_unsolicited = [ExtensionType::RenegotiationInfo];
+        if self
+            .hello
+            .server_sent_unsolicited_extensions(&server_hello.extensions, &allowed_unsolicited)
+        {
+            sess.common
+                .send_fatal_alert(AlertDescription::UnsupportedExtension);
+            return Err(TLSError::PeerMisbehavedError(
+                "server sent unsolicited extension".to_string(),
+            ));
         }
 
         // Extract ALPN protocol
@@ -761,18 +868,22 @@ impl State for ExpectServerHello {
         // Uncompressed.  But it's allowed to be omitted.
         if let Some(point_fmts) = server_hello.get_ecpoints_extension() {
             if !point_fmts.contains(&ECPointFormat::Uncompressed) {
-                sess.common.send_fatal_alert(AlertDescription::HandshakeFailure);
-                return Err(TLSError::PeerMisbehavedError("server does not support uncompressed points"
-                                                         .to_string()));
+                sess.common
+                    .send_fatal_alert(AlertDescription::HandshakeFailure);
+                return Err(TLSError::PeerMisbehavedError(
+                    "server does not support uncompressed points".to_string(),
+                ));
             }
         }
 
         let scs = sess.find_cipher_suite(server_hello.cipher_suite);
 
         if scs.is_none() {
-            sess.common.send_fatal_alert(AlertDescription::HandshakeFailure);
-            return Err(TLSError::PeerMisbehavedError("server chose non-offered ciphersuite"
-                .to_string()));
+            sess.common
+                .send_fatal_alert(AlertDescription::HandshakeFailure);
+            return Err(TLSError::PeerMisbehavedError(
+                "server chose non-offered ciphersuite".to_string(),
+            ));
         }
 
         debug!("Using ciphersuite {:?}", server_hello.cipher_suite);
@@ -782,7 +893,10 @@ impl State for ExpectServerHello {
 
         let version = sess.common.negotiated_version.unwrap();
         if !sess.common.get_suite_assert().usable_for_version(version) {
-            return Err(illegal_param(sess, "server chose unusable ciphersuite for version"));
+            return Err(illegal_param(
+                sess,
+                "server chose unusable ciphersuite for version",
+            ));
         }
 
         // Start our handshake hash, and input the server-hello.
@@ -802,12 +916,17 @@ impl State for ExpectServerHello {
         // TLS1.2 only from here-on
 
         // Save ServerRandom and SessionID
-        server_hello.random.write_slice(&mut self.handshake.randoms.server);
+        server_hello
+            .random
+            .write_slice(&mut self.handshake.randoms.server);
         self.handshake.session_id = server_hello.session_id;
 
         // Look for TLS1.3 downgrade signal in server random
         if tls13_supported && self.handshake.randoms.has_tls12_downgrade_marker() {
-            return Err(illegal_param(sess, "downgrade to TLS1.2 when TLS1.3 is supported"));
+            return Err(illegal_param(
+                sess,
+                "downgrade to TLS1.2 when TLS1.3 is supported",
+            ));
         }
 
         // Doing EMS?
@@ -816,7 +935,10 @@ impl State for ExpectServerHello {
         }
 
         // Might the server send a ticket?
-        let with_tickets = if server_hello.find_extension(ExtensionType::SessionTicket).is_some() {
+        let with_tickets = if server_hello
+            .find_extension(ExtensionType::SessionTicket)
+            .is_some()
+        {
             debug!("Server supports tickets");
             true
         } else {
@@ -826,7 +948,10 @@ impl State for ExpectServerHello {
 
         // Might the server send a CertificateStatus between Certificate and
         // ServerKeyExchange?
-        if server_hello.find_extension(ExtensionType::StatusRequest).is_some() {
+        if server_hello
+            .find_extension(ExtensionType::StatusRequest)
+            .is_some()
+        {
             debug!("Server may staple OCSP response");
             self.may_send_cert_status = true;
         }
@@ -861,12 +986,16 @@ impl State for ExpectServerHello {
                     return Err(TLSError::PeerMisbehavedError(error_msg));
                 }
 
-                let secrets = SessionSecrets::new_resume(&self.handshake.randoms,
-                                                         scs.unwrap().get_hash(),
-                                                         &resuming.master_secret.0);
-                sess.config.key_log.log(sess.common.protocol.labels().client_random,
-                                        &secrets.randoms.client,
-                                        &secrets.master_secret);
+                let secrets = SessionSecrets::new_resume(
+                    &self.handshake.randoms,
+                    scs.unwrap().get_hash(),
+                    &resuming.master_secret.0,
+                );
+                sess.config.key_log.log(
+                    sess.common.protocol.labels().client_random,
+                    &secrets.randoms.client,
+                    &secrets.master_secret,
+                );
                 sess.common.start_encryption_tls12(secrets);
             }
         }
@@ -875,7 +1004,7 @@ impl State for ExpectServerHello {
             // Since we're resuming, we verified the certificate and
             // proof of possession in the prior session.
             let certv = verify::ServerCertVerified::assertion();
-            let sigv =  verify::HandshakeSignatureValid::assertion();
+            let sigv = verify::HandshakeSignatureValid::assertion();
 
             if self.must_issue_new_ticket {
                 Ok(self.into_expect_tls12_new_ticket_resume(certv, sigv))
@@ -893,7 +1022,11 @@ impl ExpectServerHelloOrHelloRetryRequest {
         Box::new(self.0)
     }
 
-    fn handle_hello_retry_request(self, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
+    fn handle_hello_retry_request(
+        self,
+        sess: &mut ClientSessionImpl,
+        m: Message,
+    ) -> NextStateOrError {
         check_handshake_message(&m, &[HandshakeType::HelloRetryRequest])?;
 
         let hrr = extract_handshake!(m, HandshakePayload::HelloRetryRequest).unwrap();
@@ -904,7 +1037,11 @@ impl ExpectServerHelloOrHelloRetryRequest {
 
         // A retry request is illegal if it contains no cookie and asks for
         // retry of a group we already sent.
-        if !has_cookie && req_group.map(|g| self.0.hello.has_key_share(g)).unwrap_or(false) {
+        if !has_cookie
+            && req_group
+                .map(|g| self.0.hello.has_key_share(g))
+                .unwrap_or(false)
+        {
             return Err(illegal_param(sess, "server requested hrr with our group"));
         }
 
@@ -917,14 +1054,19 @@ impl ExpectServerHelloOrHelloRetryRequest {
 
         // Or has an empty cookie.
         if has_cookie && hrr.get_cookie().unwrap().0.is_empty() {
-            return Err(illegal_param(sess, "server requested hrr with empty cookie"));
+            return Err(illegal_param(
+                sess,
+                "server requested hrr with empty cookie",
+            ));
         }
 
         // Or has something unrecognised
         if hrr.has_unknown_extension() {
-            sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
-            return Err(TLSError::PeerIncompatibleError("server sent hrr with unhandled extension"
-                                                       .to_string()));
+            sess.common
+                .send_fatal_alert(AlertDescription::UnsupportedExtension);
+            return Err(TLSError::PeerIncompatibleError(
+                "server sent hrr with unhandled extension".to_string(),
+            ));
         }
 
         // Or has the same extensions more than once
@@ -943,7 +1085,10 @@ impl ExpectServerHelloOrHelloRetryRequest {
                 sess.common.negotiated_version = Some(ProtocolVersion::TLSv1_3);
             }
             _ => {
-                return Err(illegal_param(sess, "server requested unsupported version in hrr"));
+                return Err(illegal_param(
+                    sess,
+                    "server requested unsupported version in hrr",
+                ));
             }
         }
 
@@ -952,7 +1097,10 @@ impl ExpectServerHelloOrHelloRetryRequest {
         let cs = match maybe_cs {
             Some(cs) => cs,
             None => {
-                return Err(illegal_param(sess, "server requested unsupported cs in hrr"));
+                return Err(illegal_param(
+                    sess,
+                    "server requested unsupported cs in hrr",
+                ));
             }
         };
 
@@ -969,18 +1117,21 @@ impl ExpectServerHelloOrHelloRetryRequest {
             sess.early_data.rejected();
         }
 
-        Ok(emit_client_hello_for_retry(sess,
-                                       self.0.handshake,
-                                       self.0.hello,
-                                       Some(hrr)))
+        Ok(emit_client_hello_for_retry(
+            sess,
+            self.0.handshake,
+            self.0.hello,
+            Some(hrr),
+        ))
     }
 }
 
 impl State for ExpectServerHelloOrHelloRetryRequest {
     fn check_message(&self, m: &Message) -> CheckResult {
-        check_handshake_message(m,
-                                &[HandshakeType::ServerHello,
-                                  HandshakeType::HelloRetryRequest])
+        check_handshake_message(
+            m,
+            &[HandshakeType::ServerHello, HandshakeType::HelloRetryRequest],
+        )
     }
 
     fn handle(self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
@@ -992,25 +1143,31 @@ impl State for ExpectServerHelloOrHelloRetryRequest {
     }
 }
 
-fn validate_encrypted_extensions(sess: &mut ClientSessionImpl,
-                                 hello: &ClientHelloDetails,
-                                 exts: &EncryptedExtensions) -> Result<(), TLSError> {
+fn validate_encrypted_extensions(
+    sess: &mut ClientSessionImpl,
+    hello: &ClientHelloDetails,
+    exts: &EncryptedExtensions,
+) -> Result<(), TLSError> {
     if exts.has_duplicate_extension() {
         sess.common.send_fatal_alert(AlertDescription::DecodeError);
-        return Err(TLSError::PeerMisbehavedError("server sent duplicate encrypted extensions"
-                                                 .to_string()));
+        return Err(TLSError::PeerMisbehavedError(
+            "server sent duplicate encrypted extensions".to_string(),
+        ));
     }
 
     if hello.server_sent_unsolicited_extensions(exts, &[]) {
-        sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
+        sess.common
+            .send_fatal_alert(AlertDescription::UnsupportedExtension);
         let msg = "server sent unsolicited encrypted extension".to_string();
         return Err(TLSError::PeerMisbehavedError(msg));
     }
 
     for ext in exts {
-        if ALLOWED_PLAINTEXT_EXTS.contains(&ext.get_type()) ||
-           DISALLOWED_TLS13_EXTS.contains(&ext.get_type()) {
-            sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
+        if ALLOWED_PLAINTEXT_EXTS.contains(&ext.get_type())
+            || DISALLOWED_TLS13_EXTS.contains(&ext.get_type())
+        {
+            sess.common
+                .send_fatal_alert(AlertDescription::UnsupportedExtension);
             let msg = "server sent inappropriate encrypted extension".to_string();
             return Err(TLSError::PeerMisbehavedError(msg));
         }
@@ -1026,9 +1183,11 @@ struct ExpectTLS13EncryptedExtensions {
 }
 
 impl ExpectTLS13EncryptedExtensions {
-    fn into_expect_tls13_finished_resume(self,
-                                         certv: verify::ServerCertVerified,
-                                         sigv: verify::HandshakeSignatureValid) -> NextState {
+    fn into_expect_tls13_finished_resume(
+        self,
+        certv: verify::ServerCertVerified,
+        sigv: verify::HandshakeSignatureValid,
+    ) -> NextState {
         Box::new(ExpectTLS13Finished {
             handshake: self.handshake,
             client_auth: None,
@@ -1058,7 +1217,8 @@ impl State for ExpectTLS13EncryptedExtensions {
         validate_encrypted_extensions(sess, &self.hello, exts)?;
         process_alpn_protocol(sess, exts.get_alpn_protocol())?;
 
-        #[cfg(feature = "quic")] {
+        #[cfg(feature = "quic")]
+        {
             // QUIC transport parameters
             if let Some(params) = exts.get_quic_params_extension() {
                 sess.common.quic.params = Some(params);
@@ -1079,18 +1239,26 @@ impl State for ExpectTLS13EncryptedExtensions {
             if was_early_traffic && !sess.common.early_traffic {
                 // If no early traffic, set the encryption key for handshakes
                 let suite = sess.common.get_suite_assert();
-                let write_key = sess.common.get_key_schedule()
-                    .derive(SecretKind::ClientHandshakeTrafficSecret,
-                        &self.handshake.hash_at_client_recvd_server_hello);
-                sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-                sess.config.key_log.log(sess.common.protocol.labels().client_handshake_traffic_secret,
-                                &self.handshake.randoms.client,
-                                &write_key);
-                sess.common.get_mut_key_schedule()
+                let write_key = sess.common.get_key_schedule().derive(
+                    SecretKind::ClientHandshakeTrafficSecret,
+                    &self.handshake.hash_at_client_recvd_server_hello,
+                );
+                sess.common
+                    .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+                sess.config.key_log.log(
+                    sess.common
+                        .protocol
+                        .labels()
+                        .client_handshake_traffic_secret,
+                    &self.handshake.randoms.client,
+                    &write_key,
+                );
+                sess.common
+                    .get_mut_key_schedule()
                     .current_client_traffic_secret = write_key;
             }
             let certv = verify::ServerCertVerified::assertion();
-            let sigv =  verify::HandshakeSignatureValid::assertion();
+            let sigv = verify::HandshakeSignatureValid::assertion();
             Ok(self.into_expect_tls13_finished_resume(certv, sigv))
         } else {
             if exts.early_data_extension_offered() {
@@ -1102,10 +1270,8 @@ impl State for ExpectTLS13EncryptedExtensions {
     }
 }
 
-
 fn sct_list_is_invalid(scts: &SCTList) -> bool {
-    scts.is_empty() ||
-        scts.iter().any(|sct| sct.0.is_empty())
+    scts.is_empty() || scts.iter().any(|sct| sct.0.is_empty())
 }
 
 struct ExpectTLS13Certificate {
@@ -1128,8 +1294,12 @@ impl ExpectTLS13Certificate {
         let cert = &self.server_cert.cert_chain[0];
         let cert_in = untrusted::Input::from(&cert.0);
         let cert = webpki::EndEntityCert::from(cert_in)
-            .map_err(TLSError::WebPKIError).unwrap();
+            .map_err(TLSError::WebPKIError)
+            .unwrap();
+        debug_assert!(cert.is_kem_cert());
 
+        let (algorithm, _) = cert.public_key().unwrap();
+        debug!("Cert algorithm: {}", algorithm);
         let (ciphertext, shared_secret) = cert.encapsulate().unwrap();
 
         let ckx = Message {
@@ -1138,36 +1308,63 @@ impl ExpectTLS13Certificate {
             payload: MessagePayload::Handshake(HandshakeMessagePayload {
                 typ: HandshakeType::ClientKeyExchange,
                 payload: HandshakePayload::ClientKeyExchange(Payload::new(
-                    ciphertext.as_ref().to_vec())),
+                    ciphertext.as_ref().to_vec(),
+                )),
             }),
         };
 
         session.common.hs_transcript.add_message(&ckx);
         session.common.send_msg(ckx, true);
 
-        session.common.get_mut_key_schedule().input_secret(&shared_secret);
+        session
+            .common
+            .get_mut_key_schedule()
+            .input_secret(&shared_secret);
+        let handshake_hash = &session.common.hs_transcript.get_current_hash();
+        session
+            .common
+            .get_mut_key_schedule()
+            .derive_with_hash(handshake_hash);
         check_aligned_handshake(session).unwrap();
 
         let suite = session.common.get_suite_assert();
         let mut sess = session;
         // Set the client encryption key for handshakes if early data is not used
-        let handshake_hash = &sess.common.hs_transcript.get_current_hash();
-        let write_key = sess.common.get_key_schedule()
-            .derive(SecretKind::ClientHandshakeTrafficSecret, handshake_hash);
-        sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-        sess.config.key_log.log(sess.common.protocol.labels().client_handshake_traffic_secret,
-                &self.handshake.randoms.client,
-                &write_key);
-        sess.common.get_mut_key_schedule().current_client_traffic_secret = write_key;
+        let write_key = sess.common.get_key_schedule().derive(
+            SecretKind::ClientAuthenticatedHandshakeTrafficSecret,
+            handshake_hash,
+        );
+        sess.common
+            .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+        sess.config.key_log.log(
+            sess.common
+                .protocol
+                .labels()
+                .client_handshake_traffic_secret,
+            &self.handshake.randoms.client,
+            &write_key,
+        );
+        sess.common
+            .get_mut_key_schedule()
+            .current_client_traffic_secret = write_key;
 
-        let read_key = sess.common.get_key_schedule()
-            .derive(SecretKind::ServerHandshakeTrafficSecret,
-                &handshake_hash);
-        sess.common.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
-        sess.config.key_log.log(sess.common.protocol.labels().server_handshake_traffic_secret,
-                                &self.handshake.randoms.client,
-                                &read_key);
-        sess.common.get_mut_key_schedule().current_server_traffic_secret = read_key;
+        let read_key = sess.common.get_key_schedule().derive(
+            SecretKind::ServerAuthenticatedHandshakeTrafficSecret,
+            &handshake_hash,
+        );
+        sess.common
+            .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
+        sess.config.key_log.log(
+            sess.common
+                .protocol
+                .labels()
+                .server_handshake_traffic_secret,
+            &self.handshake.randoms.client,
+            &read_key,
+        );
+        sess.common
+            .get_mut_key_schedule()
+            .current_server_traffic_secret = read_key;
     }
 }
 
@@ -1187,11 +1384,15 @@ impl State for ExpectTLS13Certificate {
             return Err(TLSError::CorruptMessagePayload(ContentType::Handshake));
         }
 
-        if cert_chain.any_entry_has_duplicate_extension() ||
-            cert_chain.any_entry_has_unknown_extension() {
+        if cert_chain.any_entry_has_duplicate_extension()
+            || cert_chain.any_entry_has_unknown_extension()
+        {
             warn!("certificate chain contains unsolicited/unknown extension");
-            sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
-            return Err(TLSError::PeerMisbehavedError("bad cert chain extensions".to_string()));
+            sess.common
+                .send_fatal_alert(AlertDescription::UnsupportedExtension);
+            return Err(TLSError::PeerMisbehavedError(
+                "bad cert chain extensions".to_string(),
+            ));
         }
 
         self.server_cert.ocsp_response = cert_chain.get_end_entity_ocsp();
@@ -1210,14 +1411,16 @@ impl State for ExpectTLS13Certificate {
             }
         }
 
-        let certv = sess.config
+        let certv = sess
+            .config
             .get_verifier()
-            .verify_server_cert(&sess.config.root_store,
-                                &self.server_cert.cert_chain,
-                                self.handshake.dns_name.as_ref(),
-                                &self.server_cert.ocsp_response)
+            .verify_server_cert(
+                &sess.config.root_store,
+                &self.server_cert.cert_chain,
+                self.handshake.dns_name.as_ref(),
+                &self.server_cert.ocsp_response,
+            )
             .map_err(|err| send_cert_error_alert(sess, err))?;
-
 
         self.emit_clientkx(sess);
         emit_finished_tls13(&self.handshake, sess);
@@ -1296,7 +1499,10 @@ impl State for ExpectTLS12CertificateStatus {
         let mut status = extract_handshake_mut!(m, HandshakePayload::CertificateStatus).unwrap();
 
         self.server_cert.ocsp_response = status.take_ocsp_response();
-        debug!("Server stapled OCSP response is {:?}", self.server_cert.ocsp_response);
+        debug!(
+            "Server stapled OCSP response is {:?}",
+            self.server_cert.ocsp_response
+        );
         Ok(self.into_expect_tls12_server_kx())
     }
 }
@@ -1327,9 +1533,13 @@ impl ExpectTLS12CertificateStatusOrServerKX {
 
 impl State for ExpectTLS12CertificateStatusOrServerKX {
     fn check_message(&self, m: &Message) -> Result<(), TLSError> {
-        check_handshake_message(m,
-                                &[HandshakeType::ServerKeyExchange,
-                                  HandshakeType::CertificateStatus])
+        check_handshake_message(
+            m,
+            &[
+                HandshakeType::ServerKeyExchange,
+                HandshakeType::CertificateStatus,
+            ],
+        )
     }
 
     fn handle(self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
@@ -1365,9 +1575,13 @@ impl ExpectTLS13CertificateOrCertReq {
 
 impl State for ExpectTLS13CertificateOrCertReq {
     fn check_message(&self, m: &Message) -> Result<(), TLSError> {
-        check_handshake_message(m,
-                                &[HandshakeType::Certificate,
-                                  HandshakeType::CertificateRequest])
+        check_handshake_message(
+            m,
+            &[
+                HandshakeType::Certificate,
+                HandshakeType::CertificateRequest,
+            ],
+        )
     }
 
     fn handle(self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
@@ -1438,9 +1652,11 @@ struct ExpectTLS13CertificateVerify {
 }
 
 impl ExpectTLS13CertificateVerify {
-    fn into_expect_tls13_finished(self,
-                                  certv: verify::ServerCertVerified,
-                                  sigv: verify::HandshakeSignatureValid) -> NextState {
+    fn into_expect_tls13_finished(
+        self,
+        certv: verify::ServerCertVerified,
+        sigv: verify::HandshakeSignatureValid,
+    ) -> NextState {
         Box::new(ExpectTLS13Finished {
             handshake: self.handshake,
             client_auth: self.client_auth,
@@ -1456,10 +1672,12 @@ fn send_cert_error_alert(sess: &mut ClientSessionImpl, err: TLSError) -> TLSErro
             sess.common.send_fatal_alert(AlertDescription::DecodeError);
         }
         TLSError::PeerMisbehavedError(_) => {
-            sess.common.send_fatal_alert(AlertDescription::IllegalParameter);
+            sess.common
+                .send_fatal_alert(AlertDescription::IllegalParameter);
         }
         _ => {
-            sess.common.send_fatal_alert(AlertDescription::BadCertificate);
+            sess.common
+                .send_fatal_alert(AlertDescription::BadCertificate);
         }
     };
 
@@ -1482,12 +1700,15 @@ impl State for ExpectTLS13CertificateVerify {
             return Err(TLSError::NoCertificatesPresented);
         }
 
-        let certv = sess.config
+        let certv = sess
+            .config
             .get_verifier()
-            .verify_server_cert(&sess.config.root_store,
-                                &self.server_cert.cert_chain,
-                                self.handshake.dns_name.as_ref(),
-                                &self.server_cert.ocsp_response)
+            .verify_server_cert(
+                &sess.config.root_store,
+                &self.server_cert.cert_chain,
+                self.handshake.dns_name.as_ref(),
+                &self.server_cert.ocsp_response,
+            )
             .map_err(|err| send_cert_error_alert(sess, err))?;
 
         // 2. Verify their signature on the handshake.
@@ -1495,21 +1716,23 @@ impl State for ExpectTLS13CertificateVerify {
         // XXX Add our secret key to the verification to compute MAC key
         let cert = &self.server_cert.cert_chain[0];
         // XXX find key share from certificate type.
-        let our_key_share = self.hello.find_key_share(NamedGroup::CSIDH)
+        let our_key_share = self
+            .hello
+            .find_key_share(NamedGroup::KYBER512)
             .ok_or_else(|| illegal_param(sess, "wrong group for key share"))?;
-        let sigv = verify::verify_tls13(cert,
-                                        our_key_share,
-                                        cert_verify,
-                                        &handshake_hash,
-                                        b"TLS 1.3, server CertificateVerify\x00")
-            .map_err(|err| send_cert_error_alert(sess, err))?;
+        let sigv = verify::verify_tls13(
+            cert,
+            our_key_share,
+            cert_verify,
+            &handshake_hash,
+            b"TLS 1.3, server CertificateVerify\x00",
+        )
+        .map_err(|err| send_cert_error_alert(sess, err))?;
 
         // 3. Verify any included SCTs.
         match (self.server_cert.scts.as_ref(), sess.config.ct_logs) {
             (Some(scts), Some(logs)) => {
-                verify::verify_scts(&self.server_cert.cert_chain[0],
-                                    scts,
-                                    logs)?;
+                verify::verify_scts(&self.server_cert.cert_chain[0], scts, logs)?;
             }
             (_, _) => {}
         }
@@ -1521,8 +1744,7 @@ impl State for ExpectTLS13CertificateVerify {
     }
 }
 
-fn emit_certificate(client_auth: &mut ClientAuthDetails,
-                    sess: &mut ClientSessionImpl) {
+fn emit_certificate(client_auth: &mut ClientAuthDetails, sess: &mut ClientSessionImpl) {
     let chosen_cert = client_auth.cert.take();
 
     let cert = Message {
@@ -1538,8 +1760,7 @@ fn emit_certificate(client_auth: &mut ClientAuthDetails,
     sess.common.send_msg(cert, false);
 }
 
-fn emit_clientkx(sess: &mut ClientSessionImpl,
-                 kxd: &suites::KeyExchangeResult) {
+fn emit_clientkx(sess: &mut ClientSessionImpl, kxd: &suites::KeyExchangeResult) {
     let mut buf = Vec::new();
     let ecpoint = PayloadU8::new(Vec::from(kxd.ciphertext.as_ref().unwrap().as_ref()));
     ecpoint.encode(&mut buf);
@@ -1558,8 +1779,10 @@ fn emit_clientkx(sess: &mut ClientSessionImpl,
     sess.common.send_msg(ckx, false);
 }
 
-fn emit_certverify(client_auth: &mut ClientAuthDetails,
-                   sess: &mut ClientSessionImpl) -> Result<(), TLSError> {
+fn emit_certverify(
+    client_auth: &mut ClientAuthDetails,
+    sess: &mut ClientSessionImpl,
+) -> Result<(), TLSError> {
     if client_auth.signer.is_none() {
         trace!("Not sending CertificateVerify, no key");
         sess.common.hs_transcript.abandon_client_auth();
@@ -1599,7 +1822,9 @@ fn emit_ccs(sess: &mut ClientSessionImpl) {
 
 fn emit_finished(sess: &mut ClientSessionImpl) {
     let vh = sess.common.hs_transcript.get_current_hash();
-    let verify_data = sess.common.secrets
+    let verify_data = sess
+        .common
+        .secrets
         .as_ref()
         .unwrap()
         .client_verify_data(&vh);
@@ -1662,12 +1887,15 @@ impl State for ExpectTLS12CertificateRequest {
             return Ok(self.into_expect_tls12_server_done(client_auth));
         }
 
-        let canames = certreq.canames
+        let canames = certreq
+            .canames
             .iter()
             .map(|p| p.0.as_slice())
             .collect::<Vec<&[u8]>>();
-        let maybe_certkey =
-            sess.config.client_auth_cert_resolver.resolve(&canames, &certreq.sigschemes);
+        let maybe_certkey = sess
+            .config
+            .client_auth_cert_resolver
+            .resolve(&canames, &certreq.sigschemes);
 
         if let Some(mut certkey) = maybe_certkey {
             debug!("Attempting client auth");
@@ -1721,7 +1949,8 @@ impl State for ExpectTLS13CertificateRequest {
 
         let tls13_sign_schemes = sign::supported_sign_tls13();
         let no_sigschemes = Vec::new();
-        let compat_sigschemes = certreq.get_sigalgs_extension()
+        let compat_sigschemes = certreq
+            .get_sigalgs_extension()
             .unwrap_or(&no_sigschemes)
             .iter()
             .cloned()
@@ -1729,18 +1958,24 @@ impl State for ExpectTLS13CertificateRequest {
             .collect::<Vec<SignatureScheme>>();
 
         if compat_sigschemes.is_empty() {
-            sess.common.send_fatal_alert(AlertDescription::HandshakeFailure);
-            return Err(TLSError::PeerIncompatibleError("server sent bad certreq schemes".to_string()));
+            sess.common
+                .send_fatal_alert(AlertDescription::HandshakeFailure);
+            return Err(TLSError::PeerIncompatibleError(
+                "server sent bad certreq schemes".to_string(),
+            ));
         }
 
         let no_canames = Vec::new();
-        let canames = certreq.get_authorities_extension()
+        let canames = certreq
+            .get_authorities_extension()
             .unwrap_or(&no_canames)
             .iter()
             .map(|p| p.0.as_slice())
             .collect::<Vec<&[u8]>>();
-        let maybe_certkey =
-            sess.config.client_auth_cert_resolver.resolve(&canames, &compat_sigschemes);
+        let maybe_certkey = sess
+            .config
+            .client_auth_cert_resolver
+            .resolve(&canames, &compat_sigschemes);
 
         let mut client_auth = ClientAuthDetails::new();
         if let Some(mut certkey) = maybe_certkey {
@@ -1787,9 +2022,13 @@ impl ExpectTLS12ServerDoneOrCertReq {
 
 impl State for ExpectTLS12ServerDoneOrCertReq {
     fn check_message(&self, m: &Message) -> Result<(), TLSError> {
-        check_handshake_message(m,
-                                &[HandshakeType::CertificateRequest,
-                                  HandshakeType::ServerHelloDone])
+        check_handshake_message(
+            m,
+            &[
+                HandshakeType::CertificateRequest,
+                HandshakeType::ServerHelloDone,
+            ],
+        )
     }
 
     fn handle(self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
@@ -1802,7 +2041,6 @@ impl State for ExpectTLS12ServerDoneOrCertReq {
     }
 }
 
-
 struct ExpectTLS12ServerDone {
     handshake: HandshakeDetails,
     server_cert: ServerCertDetails,
@@ -1812,9 +2050,11 @@ struct ExpectTLS12ServerDone {
 }
 
 impl ExpectTLS12ServerDone {
-    fn into_expect_tls12_new_ticket(self,
-                                    certv: verify::ServerCertVerified,
-                                    sigv: verify::HandshakeSignatureValid) -> NextState {
+    fn into_expect_tls12_new_ticket(
+        self,
+        certv: verify::ServerCertVerified,
+        sigv: verify::HandshakeSignatureValid,
+    ) -> NextState {
         Box::new(ExpectTLS12NewTicket {
             handshake: self.handshake,
             resuming: false,
@@ -1823,9 +2063,11 @@ impl ExpectTLS12ServerDone {
         })
     }
 
-    fn into_expect_tls12_ccs(self,
-                             certv: verify::ServerCertVerified,
-                             sigv: verify::HandshakeSignatureValid) -> NextState {
+    fn into_expect_tls12_ccs(
+        self,
+        certv: verify::ServerCertVerified,
+        sigv: verify::HandshakeSignatureValid,
+    ) -> NextState {
         Box::new(ExpectTLS12CCS {
             handshake: self.handshake,
             ticket: ReceivedTicketDetails::new(),
@@ -1866,20 +2108,21 @@ impl State for ExpectTLS12ServerDone {
         }
 
         // XXX Handle kem stuff?
-        let certv = sess.config
+        let certv = sess
+            .config
             .get_verifier()
-            .verify_server_cert(&sess.config.root_store,
-                                &st.server_cert.cert_chain,
-                                st.handshake.dns_name.as_ref(),
-                                &st.server_cert.ocsp_response)
+            .verify_server_cert(
+                &sess.config.root_store,
+                &st.server_cert.cert_chain,
+                st.handshake.dns_name.as_ref(),
+                &st.server_cert.ocsp_response,
+            )
             .map_err(|err| send_cert_error_alert(sess, err))?;
 
         // 2. Verify any included SCTs.
         match (st.server_cert.scts.as_ref(), sess.config.ct_logs) {
             (Some(scts), Some(logs)) => {
-                verify::verify_scts(&st.server_cert.cert_chain[0],
-                                    scts,
-                                    logs)?;
+                verify::verify_scts(&st.server_cert.cert_chain[0], scts, logs)?;
             }
             (_, _) => {}
         }
@@ -1900,27 +2143,28 @@ impl State for ExpectTLS12ServerDone {
             let sig = &st.server_kx.kx_sig;
             let scs = sess.common.get_suite_assert();
             if scs.sign != sig.scheme.sign() {
-                let error_message =
-                    format!("peer signed kx with wrong algorithm (got {:?} expect {:?})",
-                                      sig.scheme.sign(), scs.sign);
+                let error_message = format!(
+                    "peer signed kx with wrong algorithm (got {:?} expect {:?})",
+                    sig.scheme.sign(),
+                    scs.sign
+                );
                 return Err(TLSError::PeerMisbehavedError(error_message));
             }
 
-            verify::verify_signed_struct(&message,
-                                         &st.server_cert.cert_chain[0],
-                                         sig)
+            verify::verify_signed_struct(&message, &st.server_cert.cert_chain[0], sig)
                 .map_err(|err| send_cert_error_alert(sess, err))?
         };
         sess.server_cert_chain = st.server_cert.take_chain();
 
         // 4.
         if st.client_auth.is_some() {
-            emit_certificate(st.client_auth.as_mut().unwrap(),
-                             sess);
+            emit_certificate(st.client_auth.as_mut().unwrap(), sess);
         }
 
         // 5a.
-        let kxd = sess.common.get_suite_assert()
+        let kxd = sess
+            .common
+            .get_suite_assert()
             .do_client_kx(&st.server_kx.kx_params)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
 
@@ -1931,8 +2175,7 @@ impl State for ExpectTLS12ServerDone {
 
         // 5c.
         if st.client_auth.is_some() {
-            emit_certverify(st.client_auth.as_mut().unwrap(),
-                            sess)?;
+            emit_certverify(st.client_auth.as_mut().unwrap(), sess)?;
         }
 
         // 5d.
@@ -1941,18 +2184,20 @@ impl State for ExpectTLS12ServerDone {
         // 5e. Now commit secrets.
         let hashalg = sess.common.get_suite_assert().get_hash();
         let secrets = if st.handshake.using_ems {
-            SessionSecrets::new_ems(&st.handshake.randoms,
-                                    &handshake_hash,
-                                    hashalg,
-                                    &kxd.premaster_secret)
+            SessionSecrets::new_ems(
+                &st.handshake.randoms,
+                &handshake_hash,
+                hashalg,
+                &kxd.premaster_secret,
+            )
         } else {
-            SessionSecrets::new(&st.handshake.randoms,
-                                hashalg,
-                                &kxd.premaster_secret)
+            SessionSecrets::new(&st.handshake.randoms, hashalg, &kxd.premaster_secret)
         };
-        sess.config.key_log.log(sess.common.protocol.labels().client_random,
-                                &secrets.randoms.client,
-                                &secrets.master_secret);
+        sess.config.key_log.log(
+            sess.common.protocol.labels().client_random,
+            &secrets.randoms.client,
+            &secrets.master_secret,
+        );
         sess.common.start_encryption_tls12(secrets);
 
         // 6.
@@ -1998,7 +2243,7 @@ impl State for ExpectTLS12CCS {
         if !sess.common.handshake_joiner.is_empty() {
             warn!("CCS received interleaved with fragmented handshake");
             return Err(TLSError::InappropriateMessage {
-                expect_types: vec![ ContentType::Handshake ],
+                expect_types: vec![ContentType::Handshake],
                 got_type: ContentType::ChangeCipherSpec,
             });
         }
@@ -2044,9 +2289,11 @@ impl State for ExpectTLS12NewTicket {
 }
 
 // -- Waiting for their finished --
-fn save_session(handshake: &mut HandshakeDetails,
-                recvd_ticket: &mut ReceivedTicketDetails,
-                sess: &mut ClientSessionImpl) {
+fn save_session(
+    handshake: &mut HandshakeDetails,
+    recvd_ticket: &mut ReceivedTicketDetails,
+    sess: &mut ClientSessionImpl,
+) {
     // Save a ticket.  If we got a new ticket, save that.  Otherwise, save the
     // original ticket again.
     let mut ticket = mem::replace(&mut recvd_ticket.new_ticket, Vec::new());
@@ -2064,20 +2311,22 @@ fn save_session(handshake: &mut HandshakeDetails,
     let scs = sess.common.get_suite_assert();
     let master_secret = sess.common.secrets.as_ref().unwrap().get_master_secret();
     let version = sess.get_protocol_version().unwrap();
-    let mut value = persist::ClientSessionValue::new(version,
-                                                     scs.suite,
-                                                     &handshake.session_id,
-                                                     ticket,
-                                                     master_secret);
-    value.set_times(ticketer::timebase(),
-                    recvd_ticket.new_ticket_lifetime,
-                    0);
+    let mut value = persist::ClientSessionValue::new(
+        version,
+        scs.suite,
+        &handshake.session_id,
+        ticket,
+        master_secret,
+    );
+    value.set_times(ticketer::timebase(), recvd_ticket.new_ticket_lifetime, 0);
     if handshake.using_ems {
         value.set_extended_ms_used();
     }
 
-    let worked = sess.config.session_persistence.put(key.get_encoding(),
-                                                     value.get_encoding());
+    let worked = sess
+        .config
+        .session_persistence
+        .put(key.get_encoding(), value.get_encoding());
 
     if worked {
         debug!("Session saved");
@@ -2086,11 +2335,8 @@ fn save_session(handshake: &mut HandshakeDetails,
     }
 }
 
-fn emit_certificate_tls13(client_auth: &mut ClientAuthDetails,
-                          sess: &mut ClientSessionImpl) {
-    let context = client_auth.auth_context
-        .take()
-        .unwrap_or_else(Vec::new);
+fn emit_certificate_tls13(client_auth: &mut ClientAuthDetails, sess: &mut ClientSessionImpl) {
+    let context = client_auth.auth_context.take().unwrap_or_else(Vec::new);
 
     let mut cert_payload = CertificatePayloadTLS13 {
         context: PayloadU8::new(context),
@@ -2115,8 +2361,10 @@ fn emit_certificate_tls13(client_auth: &mut ClientAuthDetails,
     sess.common.send_msg(m, true);
 }
 
-fn emit_certverify_tls13(client_auth: &mut ClientAuthDetails,
-                         sess: &mut ClientSessionImpl) -> Result<(), TLSError> {
+fn emit_certverify_tls13(
+    client_auth: &mut ClientAuthDetails,
+    sess: &mut ClientSessionImpl,
+) -> Result<(), TLSError> {
     if client_auth.signer.is_none() {
         debug!("Skipping certverify message (no client scheme/key)");
         return Ok(());
@@ -2148,10 +2396,14 @@ fn emit_certverify_tls13(client_auth: &mut ClientAuthDetails,
 
 fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImpl) {
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
-    debug!("Current client traffic secret: {:?}", sess.common.get_key_schedule().current_client_traffic_secret);
-    let verify_data = sess.common
-        .get_key_schedule()
-        .sign_finish(SecretKind::ClientHandshakeTrafficSecret, &handshake_hash);
+    debug!(
+        "Current client traffic secret: {:?}",
+        sess.common.get_key_schedule().current_client_traffic_secret
+    );
+    let verify_data = sess.common.get_key_schedule().sign_finish(
+        SecretKind::ClientAuthenticatedHandshakeTrafficSecret,
+        &handshake_hash,
+    );
     trace!("handshake_hash: {:?}", &handshake_hash);
     trace!("Verify data: {:?}", &verify_data);
     let verify_data_payload = Payload::new(verify_data);
@@ -2170,15 +2422,22 @@ fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImp
 
     assert!(check_aligned_handshake(sess).is_ok());
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
-    let write_key = sess.common
+    let write_key = sess
+        .common
         .get_key_schedule()
         .derive(SecretKind::ClientApplicationTrafficSecret, &handshake_hash);
-    sess.config.key_log.log(sess.common.protocol.labels().client_traffic_secret_0,
-                            &handshake.randoms.client,
-                            &write_key);
+    sess.config.key_log.log(
+        sess.common.protocol.labels().client_traffic_secret_0,
+        &handshake.randoms.client,
+        &write_key,
+    );
     let suite = sess.common.get_suite_assert();
-    sess.common.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-    trace!("Client traffic secret on starting to write: {:?}", &write_key);
+    sess.common
+        .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+    trace!(
+        "Client traffic secret on starting to write: {:?}",
+        &write_key
+    );
     sess.common
         .get_mut_key_schedule()
         .current_client_traffic_secret = write_key;
@@ -2186,13 +2445,14 @@ fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImp
     // We need the client to start encrypting here.
     sess.common.we_now_encrypting();
     sess.common.start_traffic();
-
 }
 
 fn emit_end_of_early_data_tls13(sess: &mut ClientSessionImpl) {
     #[cfg(feature = "quic")]
     {
-        if let Protocol::Quic = sess.common.protocol { return; }
+        if let Protocol::Quic = sess.common.protocol {
+            return;
+        }
     }
 
     let m = Message {
@@ -2216,8 +2476,7 @@ struct ExpectTLS13Finished {
 }
 
 impl ExpectTLS13Finished {
-    fn into_expect_tls13_traffic(self,
-                                 fin: verify::FinishedMessageVerified) -> ExpectTLS13Traffic {
+    fn into_expect_tls13_traffic(self, fin: verify::FinishedMessageVerified) -> ExpectTLS13Traffic {
         ExpectTLS13Traffic {
             handshake: self.handshake,
             _cert_verified: self.cert_verified,
@@ -2238,15 +2497,16 @@ impl State for ExpectTLS13Finished {
         let finished = extract_handshake!(m, HandshakePayload::Finished).unwrap();
 
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
-        let expect_verify_data = sess.common
-            .get_key_schedule()
-            .sign_finish(SecretKind::ServerHandshakeTrafficSecret, &handshake_hash);
+        let expect_verify_data = sess.common.get_key_schedule().sign_finish(
+            SecretKind::ServerAuthenticatedHandshakeTrafficSecret,
+            &handshake_hash,
+        );
 
         let fin = constant_time::verify_slices_are_equal(&expect_verify_data, &finished.0)
             .map_err(|_| {
-                         sess.common.send_fatal_alert(AlertDescription::DecryptError);
-                         TLSError::DecryptError
-                    })
+                sess.common.send_fatal_alert(AlertDescription::DecryptError);
+                TLSError::DecryptError
+            })
             .map(|_| verify::FinishedMessageVerified::assertion())?;
 
         // Hash this message too.
@@ -2269,26 +2529,31 @@ impl State for ExpectTLS13Finished {
 
         /* Traffic from server is now decrypted with application data keys. */
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
-        let read_key = sess.common
+        let read_key = sess
+            .common
             .get_key_schedule()
             .derive(SecretKind::ServerApplicationTrafficSecret, &handshake_hash);
-        sess.config.key_log.log(sess.common.protocol.labels().server_traffic_secret_0,
-                                &st.handshake.randoms.client,
-                                &read_key);
-        sess.common.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
+        sess.config.key_log.log(
+            sess.common.protocol.labels().server_traffic_secret_0,
+            &st.handshake.randoms.client,
+            &read_key,
+        );
+        sess.common
+            .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
         sess.common
             .get_mut_key_schedule()
             .current_server_traffic_secret = read_key;
 
-        let exporter_secret = sess.common
+        let exporter_secret = sess
+            .common
             .get_key_schedule()
             .derive(SecretKind::ExporterMasterSecret, &handshake_hash);
-        sess.config.key_log.log(sess.common.protocol.labels().exporter_secret,
-                                &st.handshake.randoms.client,
-                                &exporter_secret);
-        sess.common
-            .get_mut_key_schedule()
-            .current_exporter_secret = exporter_secret;
+        sess.config.key_log.log(
+            sess.common.protocol.labels().exporter_secret,
+            &st.handshake.randoms.client,
+            &exporter_secret,
+        );
+        sess.common.get_mut_key_schedule().current_exporter_secret = exporter_secret;
 
         // /* The EndOfEarlyData message to server is still encrypted with early data keys,
         //  * but appears in the transcript after the server Finished. */
@@ -2315,7 +2580,8 @@ impl State for ExpectTLS13Finished {
         /* Now move to our application traffic keys. */
 
         let st = st.into_expect_tls13_traffic(fin);
-        #[cfg(feature = "quic")] {
+        #[cfg(feature = "quic")]
+        {
             if sess.common.protocol == Protocol::Quic {
                 let key_schedule = sess.common.key_schedule.as_ref().unwrap();
                 sess.common.quic.traffic_secrets = Some(quic::Secrets {
@@ -2339,8 +2605,7 @@ struct ExpectTLS12Finished {
 }
 
 impl ExpectTLS12Finished {
-    fn into_expect_tls12_traffic(self,
-                                 fin: verify::FinishedMessageVerified) -> NextState {
+    fn into_expect_tls12_traffic(self, fin: verify::FinishedMessageVerified) -> NextState {
         Box::new(ExpectTLS12Traffic {
             _cert_verified: self.cert_verified,
             _sig_verified: self.sig_verified,
@@ -2360,7 +2625,9 @@ impl State for ExpectTLS12Finished {
 
         // Work out what verify_data we expect.
         let vh = sess.common.hs_transcript.get_current_hash();
-        let expect_verify_data = sess.common.secrets
+        let expect_verify_data = sess
+            .common
+            .secrets
             .as_ref()
             .unwrap()
             .server_verify_data(&vh);
@@ -2369,17 +2636,15 @@ impl State for ExpectTLS12Finished {
         // get one chance.  But it can't hurt.
         let fin = constant_time::verify_slices_are_equal(&expect_verify_data, &finished.0)
             .map_err(|_| {
-                     sess.common.send_fatal_alert(AlertDescription::DecryptError);
-                     TLSError::DecryptError
-                     })
+                sess.common.send_fatal_alert(AlertDescription::DecryptError);
+                TLSError::DecryptError
+            })
             .map(|_| verify::FinishedMessageVerified::assertion())?;
 
         // Hash this message too.
         sess.common.hs_transcript.add_message(&m);
 
-        save_session(&mut st.handshake,
-                     &mut st.ticket,
-                     sess);
+        save_session(&mut st.handshake, &mut st.ticket, sess);
 
         if st.resuming {
             emit_ccs(sess);
@@ -2405,7 +2670,8 @@ impl State for ExpectTLS12Traffic {
     }
 
     fn handle(self: Box<Self>, sess: &mut ClientSessionImpl, mut m: Message) -> NextStateOrError {
-        sess.common.take_received_plaintext(m.take_opaque_payload().unwrap());
+        sess.common
+            .take_received_plaintext(m.take_opaque_payload().unwrap());
         Ok(self)
     }
 }
@@ -2421,31 +2687,40 @@ struct ExpectTLS13Traffic {
 }
 
 impl ExpectTLS13Traffic {
-    fn handle_new_ticket_tls13(&mut self, sess: &mut ClientSessionImpl, m: Message) -> Result<(), TLSError> {
+    fn handle_new_ticket_tls13(
+        &mut self,
+        sess: &mut ClientSessionImpl,
+        m: Message,
+    ) -> Result<(), TLSError> {
         let nst = extract_handshake!(m, HandshakePayload::NewSessionTicketTLS13).unwrap();
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
-        let resumption_master_secret = sess.common
+        let resumption_master_secret = sess
+            .common
             .get_key_schedule()
             .derive(SecretKind::ResumptionMasterSecret, &handshake_hash);
-        let secret = sess.common
+        let secret = sess
+            .common
             .get_key_schedule()
             .derive_ticket_psk(&resumption_master_secret, &nst.nonce.0);
 
-        let mut value = persist::ClientSessionValue::new(ProtocolVersion::TLSv1_3,
-                                                         sess.common.get_suite_assert().suite,
-                                                         &SessionID::empty(),
-                                                         nst.ticket.0.clone(),
-                                                         secret);
-        value.set_times(ticketer::timebase(),
-                        nst.lifetime,
-                        nst.age_add);
+        let mut value = persist::ClientSessionValue::new(
+            ProtocolVersion::TLSv1_3,
+            sess.common.get_suite_assert().suite,
+            &SessionID::empty(),
+            nst.ticket.0.clone(),
+            secret,
+        );
+        value.set_times(ticketer::timebase(), nst.lifetime, nst.age_add);
 
         if let Some(sz) = nst.get_max_early_data_size() {
             value.set_max_early_data_size(sz);
-            #[cfg(feature = "quic")] {
+            #[cfg(feature = "quic")]
+            {
                 if sess.common.protocol == Protocol::Quic {
                     if sz != 0 && sz != 0xffff_ffff {
-                        return Err(TLSError::PeerMisbehavedError("invalid max_early_data_size".into()));
+                        return Err(TLSError::PeerMisbehavedError(
+                            "invalid max_early_data_size".into(),
+                        ));
                     }
                 }
             }
@@ -2455,14 +2730,17 @@ impl ExpectTLS13Traffic {
         #[allow(unused_mut)]
         let mut ticket = value.get_encoding();
 
-        #[cfg(feature = "quic")] {
+        #[cfg(feature = "quic")]
+        {
             if sess.common.protocol == Protocol::Quic {
                 PayloadU16::encode_slice(sess.common.quic.params.as_ref().unwrap(), &mut ticket);
             }
         }
 
-        let worked = sess.config.session_persistence.put(key.get_encoding(),
-                                                         ticket);
+        let worked = sess
+            .config
+            .session_persistence
+            .put(key.get_encoding(), ticket);
 
         if worked {
             debug!("Ticket saved");
@@ -2472,22 +2750,34 @@ impl ExpectTLS13Traffic {
         Ok(())
     }
 
-    fn handle_key_update(&mut self, sess: &mut ClientSessionImpl, m: Message) -> Result<(), TLSError> {
+    fn handle_key_update(
+        &mut self,
+        sess: &mut ClientSessionImpl,
+        m: Message,
+    ) -> Result<(), TLSError> {
         let kur = extract_handshake!(m, HandshakePayload::KeyUpdate).unwrap();
-        sess.common.process_key_update(kur, SecretKind::ServerApplicationTrafficSecret)
+        sess.common
+            .process_key_update(kur, SecretKind::ServerApplicationTrafficSecret)
     }
 }
 
 impl State for ExpectTLS13Traffic {
     fn check_message(&self, m: &Message) -> Result<(), TLSError> {
-        check_message(m,
-                      &[ContentType::ApplicationData, ContentType::Handshake],
-                      &[HandshakeType::NewSessionTicket, HandshakeType::KeyUpdate])
+        check_message(
+            m,
+            &[ContentType::ApplicationData, ContentType::Handshake],
+            &[HandshakeType::NewSessionTicket, HandshakeType::KeyUpdate],
+        )
     }
 
-    fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, mut m: Message) -> NextStateOrError {
+    fn handle(
+        mut self: Box<Self>,
+        sess: &mut ClientSessionImpl,
+        mut m: Message,
+    ) -> NextStateOrError {
         if m.is_content_type(ContentType::ApplicationData) {
-            sess.common.take_received_plaintext(m.take_opaque_payload().unwrap());
+            sess.common
+                .take_received_plaintext(m.take_opaque_payload().unwrap());
         } else if m.is_handshake_type(HandshakeType::NewSessionTicket) {
             self.handle_new_ticket_tls13(sess, m)?;
         } else if m.is_handshake_type(HandshakeType::KeyUpdate) {
@@ -2504,7 +2794,11 @@ pub struct ExpectQUICTraffic(ExpectTLS13Traffic);
 #[cfg(feature = "quic")]
 impl State for ExpectQUICTraffic {
     fn check_message(&self, m: &Message) -> CheckResult {
-        check_message(m, &[ContentType::Handshake], &[HandshakeType::NewSessionTicket])
+        check_message(
+            m,
+            &[ContentType::Handshake],
+            &[HandshakeType::NewSessionTicket],
+        )
     }
 
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {

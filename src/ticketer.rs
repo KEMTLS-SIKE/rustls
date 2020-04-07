@@ -1,11 +1,10 @@
-
-use crate::server::ProducesTickets;
 use crate::rand;
+use crate::server::ProducesTickets;
 
-use std::mem;
-use std::sync::{Mutex, Arc};
-use std::time;
 use ring::aead;
+use std::mem;
+use std::sync::{Arc, Mutex};
+use std::time;
 
 /// The timebase for expiring and rolling tickets and ticketing
 /// keys.  This is UNIX wall time in seconds.
@@ -32,10 +31,11 @@ impl AEADTicketer {
     /// and advertised `lifetime_seconds`.  Note that `lifetime_seconds`
     /// does not affect the lifetime of the key.  `key` must be the
     /// right length for `alg` or this will panic.
-    pub fn new_custom(alg: &'static aead::Algorithm,
-                      key: &[u8],
-                      lifetime_seconds: u32)
-                      -> AEADTicketer {
+    pub fn new_custom(
+        alg: &'static aead::Algorithm,
+        key: &[u8],
+        lifetime_seconds: u32,
+    ) -> AEADTicketer {
         AEADTicketer {
             alg,
             enc: aead::SealingKey::new(alg, key).unwrap(),
@@ -77,12 +77,18 @@ impl ProducesTickets for AEADTicketer {
         let out_len = out.len() + self.alg.tag_len();
         out.resize(out_len, 0u8);
 
-        let rc = aead::seal_in_place(&self.enc,
-                                     nonce,
-                                     aad,
-                                     &mut out[nonce_len..],
-                                     self.alg.tag_len());
-        if rc.is_err() { None } else { Some(out) }
+        let rc = aead::seal_in_place(
+            &self.enc,
+            nonce,
+            aad,
+            &mut out[nonce_len..],
+            self.alg.tag_len(),
+        );
+        if rc.is_err() {
+            None
+        } else {
+            Some(out)
+        }
     }
 
     /// Decrypt `ciphertext` and recover the original message.
@@ -94,7 +100,8 @@ impl ProducesTickets for AEADTicketer {
             return None;
         }
 
-        let nonce = ring::aead::Nonce::try_assume_unique_for_key(&ciphertext[0..nonce_len]).unwrap();
+        let nonce =
+            ring::aead::Nonce::try_assume_unique_for_key(&ciphertext[0..nonce_len]).unwrap();
         let aad = ring::aead::Aad::empty();
 
         let mut out = Vec::new();
@@ -102,7 +109,9 @@ impl ProducesTickets for AEADTicketer {
 
         let plain_len = match aead::open_in_place(&self.dec, nonce, aad, 0, &mut out) {
             Ok(plaintext) => plaintext.len(),
-            Err(..) => { return None; }
+            Err(..) => {
+                return None;
+            }
         };
 
         out.truncate(plain_len);
@@ -130,9 +139,7 @@ impl TicketSwitcher {
     /// is used to generate new tickets.  Tickets are accepted for no
     /// longer than twice this duration.  `generator` produces a new
     /// `ProducesTickets` implementation.
-    pub fn new(lifetime: u32,
-               generator: fn() -> Box<dyn ProducesTickets>)
-               -> TicketSwitcher {
+    pub fn new(lifetime: u32, generator: fn() -> Box<dyn ProducesTickets>) -> TicketSwitcher {
         TicketSwitcher {
             generator,
             lifetime,
@@ -173,11 +180,7 @@ impl ProducesTickets for TicketSwitcher {
     fn encrypt(&self, message: &[u8]) -> Option<Vec<u8>> {
         self.maybe_roll();
 
-        self.state
-            .lock()
-            .unwrap()
-            .current
-            .encrypt(message)
+        self.state.lock().unwrap().current.encrypt(message)
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
