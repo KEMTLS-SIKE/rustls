@@ -311,7 +311,7 @@ fn emit_client_hello_for_retry(
         let groups = retryreq
             .and_then(|req| req.get_requested_key_share_group())
             .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
-            .or_else(|| Some(NamedGroup::KYBER512)) // XXX DEFAULT KEM
+            .or_else(|| Some(NamedGroup::X25519)) // XXX DEFAULT KEM
             .map(|grp| vec![grp])
             .unwrap();
 
@@ -1298,7 +1298,7 @@ impl ExpectTLS13Certificate {
             .unwrap();
         debug_assert!(cert.is_kem_cert());
 
-        let (algorithm, _) = cert.public_key().unwrap();
+        let (algorithm, _) = cert.public_key().expect("couldn't get PK");
         debug!("Cert algorithm: {}", algorithm);
         let (ciphertext, shared_secret) = cert.encapsulate().unwrap();
 

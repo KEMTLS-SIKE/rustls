@@ -2,6 +2,7 @@ use crate::error::TLSError;
 use crate::key;
 use crate::msgs::enums::{SignatureAlgorithm, SignatureScheme};
 use crate::util;
+use crate::log::debug;
 
 use untrusted;
 
@@ -27,7 +28,7 @@ pub trait SigningKey: Send + Sync {
 
     /// Gets the key, hack for kems
     fn get_key(&self) -> &[u8] {
-        panic!("not implemented");
+        panic!("not implemented SigningKey::get_key");
     }
 }
 
@@ -408,6 +409,7 @@ pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
     ];
     for (scheme, alg) in options.iter() {
         if let Ok(scheme) = PQSchemeSigner::new(der, *scheme, alg) {
+            debug!("Found {:?}", alg);
             return Ok(Box::new(scheme));
         }
     }
@@ -613,17 +615,15 @@ impl Signer for PQSchemeSigner {
     }
 }
 
-/// XXX ONLY SUPPORTS KYBER AND DOES NOT CHECK!
 #[derive(Clone)]
 struct PQKemSigner {
     key: Arc<Vec<u8>>,
 }
 
 impl PQKemSigner {
-    /// XXX ONLY SUPPORTS Kyber certs
     fn new(der: &key::PrivateKey) -> Result<Self, ()> {
         Ok(PQKemSigner {
-            key: Arc::new(der.0[28..].to_vec()),
+            key: Arc::new(der.0.to_vec()),
         })
     }
 }
