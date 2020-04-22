@@ -38,6 +38,8 @@ use crate::{msgs::base::PayloadU16, quic, session::Protocol};
 use crate::client::common::{ClientAuthDetails, ClientHelloDetails, ReceivedTicketDetails};
 use crate::client::common::{HandshakeDetails, ServerCertDetails, ServerKXDetails};
 
+use crate::client::default_group::DEFAULT_GROUP;
+
 use ring::constant_time;
 use std::mem;
 use webpki;
@@ -269,6 +271,7 @@ fn emit_client_hello_for_retry(
     mut hello: ClientHelloDetails,
     retryreq: Option<&HelloRetryRequest>,
 ) -> NextState {
+    assert!(retryreq.is_none(), "No retryrequest allowed for testing pqtls");
     // Do we have a SessionID or ticket cached for this host?
     handshake.resuming_session = find_session(sess, handshake.dns_name.as_ref());
     let (session_id, ticket, resume_version) = if handshake.resuming_session.is_some() {
@@ -310,7 +313,7 @@ fn emit_client_hello_for_retry(
         //
         let groups = retryreq
             .and_then(|req| req.get_requested_key_share_group())
-            .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
+            //.or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
             .or_else(|| Some(NamedGroup::X25519)) // XXX DEFAULT KEM
             .map(|grp| vec![grp])
             .unwrap();
