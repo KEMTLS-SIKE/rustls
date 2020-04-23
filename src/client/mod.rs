@@ -28,6 +28,7 @@ use webpki;
 mod hs;
 mod common;
 pub mod handy;
+mod default_group;
 
 /// A trait for the ability to store client session data.
 /// The keys and values are opaque.

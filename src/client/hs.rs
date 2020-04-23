@@ -42,6 +42,8 @@ use crate::{
 use crate::client::common::{ServerCertDetails, ServerKXDetails, HandshakeDetails};
 use crate::client::common::{ClientHelloDetails, ReceivedTicketDetails, ClientAuthDetails};
 
+use crate::client::default_group::DEFAULT_GROUP;
+
 use std::mem;
 use ring::constant_time;
 use webpki;
@@ -289,7 +291,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         //
         let groups = retryreq.and_then(|req| req.get_requested_key_share_group())
             .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
-            .or_else(|| Some(NamedGroup::KYBER512)) // XX DEFAULT KEM
+            .or_else(|| Some(DEFAULT_GROUP)) // XX DEFAULT KEM
             .map(|grp| vec![ grp ])
             .unwrap();
 

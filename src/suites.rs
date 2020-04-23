@@ -4,9 +4,18 @@ use crate::msgs::enums::{NamedGroup, ProtocolVersion};
 use crate::msgs::handshake::DecomposedSignatureScheme;
 use crate::msgs::handshake::KeyExchangeAlgorithm;
 use crate::msgs::handshake::{ClientECDHParams, ServerECDHParams};
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+
+use std::sync::{Arc, Mutex};
 
 use ring;
 use untrusted;
+
+lazy_static! {
+    static ref KEYSHARE_CACHE: Arc<Mutex<HashMap<NamedGroup, KeyExchange>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+}
 
 /// Bulk symmetric encryption scheme used by a cipher suite.
 #[allow(non_camel_case_types)]
@@ -31,6 +40,7 @@ pub struct KeyExchangeResult {
 
 /// An in-progress key exchange.  This has the algorithm,
 /// our private key, and our public key.
+#[derive(Clone)]
 pub struct KeyExchange {
     pub group: NamedGroup,
     alg: &'static ring::agreement::Algorithm,
@@ -54,8 +64,11 @@ impl KeyExchange {
             NamedGroup::KYBER76890S => Some(&ring::agreement::KYBER76890S),
             NamedGroup::KYBER102490S => Some(&ring::agreement::KYBER102490S),
             NamedGroup::BABYBEAR => Some(&ring::agreement::BABYBEAR),
+            NamedGroup::BABYBEAREPHEM => Some(&ring::agreement::BABYBEAREPHEM),
             NamedGroup::MAMABEAR => Some(&ring::agreement::MAMABEAR),
+            NamedGroup::MAMABEAREPHEM => Some(&ring::agreement::MAMABEAREPHEM),
             NamedGroup::PAPABEAR => Some(&ring::agreement::PAPABEAR),
+            NamedGroup::PAPABEAREPHEM => Some(&ring::agreement::PAPABEAREPHEM),
             NamedGroup::LIGHTSABER => Some(&ring::agreement::LIGHTSABER),
             NamedGroup::SABER => Some(&ring::agreement::SABER),
             NamedGroup::FIRESABER => Some(&ring::agreement::FIRESABER),
@@ -76,6 +89,24 @@ impl KeyExchange {
             NamedGroup::FRODOKEM976SHAKE => Some(&ring::agreement::FRODOKEM976SHAKE),
             NamedGroup::FRODOKEM1344AES => Some(&ring::agreement::FRODOKEM1344AES),
             NamedGroup::FRODOKEM1344SHAKE => Some(&ring::agreement::FRODOKEM1344SHAKE),
+            NamedGroup::MCELIECE348864 => Some(&ring::agreement::MCELIECE348864),
+            NamedGroup::MCELIECE348864F => Some(&ring::agreement::MCELIECE348864F),
+            NamedGroup::MCELIECE460896 => Some(&ring::agreement::MCELIECE460896),
+            NamedGroup::MCELIECE460896F => Some(&ring::agreement::MCELIECE460896F),
+            NamedGroup::MCELIECE6688128 => Some(&ring::agreement::MCELIECE6688128),
+            NamedGroup::MCELIECE6688128F => Some(&ring::agreement::MCELIECE6688128F),
+            NamedGroup::MCELIECE6960119 => Some(&ring::agreement::MCELIECE6960119),
+            NamedGroup::MCELIECE6960119F => Some(&ring::agreement::MCELIECE6960119F),
+            NamedGroup::MCELIECE8192128 => Some(&ring::agreement::MCELIECE8192128),
+            NamedGroup::MCELIECE8192128F => Some(&ring::agreement::MCELIECE8192128F),
+            NamedGroup::HQC1281CCA2 => Some(&ring::agreement::HQC1281CCA2),
+            NamedGroup::HQC1921CCA2 => Some(&ring::agreement::HQC1921CCA2),
+            NamedGroup::HQC1922CCA2 => Some(&ring::agreement::HQC1922CCA2),
+            NamedGroup::HQC2561CCA2 => Some(&ring::agreement::HQC2561CCA2),
+            NamedGroup::HQC2562CCA2 => Some(&ring::agreement::HQC2562CCA2),
+            NamedGroup::HQC2563CCA2 => Some(&ring::agreement::HQC2563CCA2),
+            NamedGroup::BIKEL1FO => Some(&ring::agreement::BIKEL1FO),
+            NamedGroup::SIKEP434COMPRESSED => Some(&ring::agreement::SIKEP434COMPRESSED),
             _ => None,
         }
     }
@@ -83,6 +114,10 @@ impl KeyExchange {
     pub fn supported_groups() -> &'static [NamedGroup] {
         // in preference order
         &[
+            NamedGroup::CSIDH,
+            NamedGroup::X25519,
+            NamedGroup::secp384r1,
+            NamedGroup::secp256r1,
             NamedGroup::KYBER512,
             NamedGroup::KYBER768,
             NamedGroup::KYBER1024,
@@ -90,8 +125,11 @@ impl KeyExchange {
             NamedGroup::KYBER76890S,
             NamedGroup::KYBER102490S,
             NamedGroup::BABYBEAR,
+            NamedGroup::BABYBEAREPHEM,
             NamedGroup::MAMABEAR,
+            NamedGroup::MAMABEAREPHEM,
             NamedGroup::PAPABEAR,
+            NamedGroup::PAPABEAREPHEM,
             NamedGroup::LIGHTSABER,
             NamedGroup::SABER,
             NamedGroup::FIRESABER,
@@ -112,10 +150,24 @@ impl KeyExchange {
             NamedGroup::FRODOKEM976SHAKE,
             NamedGroup::FRODOKEM1344AES,
             NamedGroup::FRODOKEM1344SHAKE,
-            NamedGroup::CSIDH,
-            NamedGroup::X25519,
-            NamedGroup::secp384r1,
-            NamedGroup::secp256r1,
+            NamedGroup::MCELIECE348864,
+            NamedGroup::MCELIECE348864F,
+            NamedGroup::MCELIECE460896,
+            NamedGroup::MCELIECE460896F,
+            NamedGroup::MCELIECE6688128,
+            NamedGroup::MCELIECE6688128F,
+            NamedGroup::MCELIECE6960119,
+            NamedGroup::MCELIECE6960119F,
+            NamedGroup::MCELIECE8192128,
+            NamedGroup::MCELIECE8192128F,
+            NamedGroup::HQC1281CCA2,
+            NamedGroup::HQC1921CCA2,
+            NamedGroup::HQC1922CCA2,
+            NamedGroup::HQC2561CCA2,
+            NamedGroup::HQC2562CCA2,
+            NamedGroup::HQC2563CCA2,
+            NamedGroup::BIKEL1FO,
+            NamedGroup::SIKEP434COMPRESSED,
         ]
     }
 
@@ -128,18 +180,25 @@ impl KeyExchange {
     }
 
     pub fn start_ecdhe(named_group: NamedGroup) -> Option<KeyExchange> {
-        let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
-        let rng = ring::rand::SystemRandom::new();
-        let ours = ring::agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
+        let mut cache = KEYSHARE_CACHE.lock().unwrap();
+        if let Some(keyexchange) = cache.get(&named_group) {
+            Some(keyexchange.clone())
+        } else {
+            let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
+            let rng = ring::rand::SystemRandom::new();
+            let ours = ring::agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
 
-        let pubkey = ours.compute_public_key().unwrap();
+            let pubkey = ours.compute_public_key().unwrap();
 
-        Some(KeyExchange {
-            group: named_group,
-            alg,
-            privkey: ours,
-            pubkey,
-        })
+            let kx = KeyExchange {
+                group: named_group,
+                alg,
+                privkey: ours,
+                pubkey,
+            };
+            cache.insert(named_group, kx.clone());
+            Some(kx)
+        }
     }
 
     pub fn check_client_params(&self, kx_params: &[u8]) -> bool {
@@ -157,22 +216,17 @@ impl KeyExchange {
     }
 
     pub fn complete_server(self, kx_params: &[u8]) -> Option<KeyExchangeResult> {
-        self.decode_client_params(kx_params).and_then(
-            |x| self.decapsulate(&x.public.0)
-        )
+        self.decode_client_params(kx_params)
+            .and_then(|x| self.decapsulate(&x.public.0))
     }
 
     pub fn decapsulate(self, peer_key: &[u8]) -> Option<KeyExchangeResult> {
-        let secret = ring::agreement::decapsulate(
-            self.privkey,
-            untrusted::Input::from(peer_key),
-            (),
-            |v| {
+        let secret =
+            ring::agreement::decapsulate(self.privkey, untrusted::Input::from(peer_key), (), |v| {
                 let mut r = Vec::new();
                 r.extend_from_slice(v);
                 Ok(r)
-            },
-        );
+            });
         if secret.is_err() {
             return None;
         }
