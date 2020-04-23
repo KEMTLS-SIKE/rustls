@@ -494,7 +494,7 @@ fn emit_client_hello_for_retry(
 
     sess.common.hs_transcript.add_message(&ch);
     sess.common.send_msg(ch, false);
-    println!("EMITTED CH {} ns", handshake.start_time.elapsed().as_nanos());
+    println!("EMITTED CH: {} ns", handshake.start_time.elapsed().as_nanos());
 
     // Calculate the hash of ClientHello and use it to derive EarlyTrafficSecret
     if sess.early_data.is_enabled() {
