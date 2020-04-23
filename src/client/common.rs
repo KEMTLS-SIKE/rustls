@@ -15,6 +15,7 @@ use crate::suites;
 use webpki;
 
 use std::mem;
+use std::time::Instant;
 
 pub struct ServerCertDetails {
     pub cert_chain: CertificatePayload,
@@ -59,6 +60,7 @@ pub struct HandshakeDetails {
     pub sent_tls13_fake_ccs: bool,
     pub dns_name: webpki::DNSName,
     pub extra_exts: Vec<ClientExtension>,
+    pub start_time: Instant,
 }
 
 impl HandshakeDetails {
@@ -72,6 +74,7 @@ impl HandshakeDetails {
             sent_tls13_fake_ccs: false,
             dns_name: host_name,
             extra_exts,
+            start_time: Instant::now(),
         }
     }
 }
@@ -106,6 +109,7 @@ impl ClientHelloDetails {
         self.offered_key_shares.iter().find(|s| s.group == group)
     }
 
+    #[allow(unused)]
     pub fn take_key_share_and_discard_others(
         &mut self,
         group: NamedGroup,

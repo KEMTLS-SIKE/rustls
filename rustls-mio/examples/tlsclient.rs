@@ -44,12 +44,12 @@ impl TlsClient {
              ev: &mio::Event) {
         assert_eq!(ev.token(), CLIENT);
 
-        if ev.readiness().is_readable() {
-            self.do_read();
-        }
-
         if ev.readiness().is_writable() {
             self.do_write();
+        }
+
+        if ev.readiness().is_readable() {
+            self.do_read();
         }
 
         if self.is_closed() {

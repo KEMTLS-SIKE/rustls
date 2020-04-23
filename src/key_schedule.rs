@@ -1,5 +1,5 @@
 use crate::error::TLSError;
-use crate::log::{debug, trace, warn};
+use crate::log::trace;
 use crate::msgs::codec::Codec;
 /// Key schedule maintenance for TLS1.3
 use ring::{digest, hkdf, hmac};

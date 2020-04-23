@@ -303,6 +303,7 @@ impl EarlyData {
         self.state = EarlyDataState::Accepted;
     }
 
+    #[allow(unused)]
     fn finished(&mut self) {
         trace!("EarlyData finished");
         self.state = match self.state {
