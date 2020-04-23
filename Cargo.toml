@@ -12,18 +12,19 @@ categories = ["network-programming", "cryptography"]
 
 [dependencies]
 base64 = "0.10"
-lazy_static = "1"
 log = { version = "0.4.0", optional = true }
 ring = { path = "../ring" }
 sct = { path = "../sct.rs" }
 untrusted = "0.6.2"
 webpki = { path = "../webpki" }
+lazy_static = {version = "1", optional = true}
 
 [features]
 default = ["logging"]
 logging = ["log"]
 dangerous_configuration = []
 quic = []
+cached_keyshare = ["lazy_static"]
 
 [dev-dependencies]
 env_logger = "0.6.1"

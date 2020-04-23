@@ -4,14 +4,18 @@ use crate::msgs::enums::{NamedGroup, ProtocolVersion};
 use crate::msgs::handshake::DecomposedSignatureScheme;
 use crate::msgs::handshake::KeyExchangeAlgorithm;
 use crate::msgs::handshake::{ClientECDHParams, ServerECDHParams};
+#[cfg(feature = "keyshare_cache")]
 use lazy_static::lazy_static;
+#[cfg(feature = "keyshare_cache")]
 use std::collections::HashMap;
 
+#[cfg(feature = "keyshare_cache")]
 use std::sync::{Arc, Mutex};
 
 use ring;
 use untrusted;
 
+#[cfg(feature = "keyshare_cache")]
 lazy_static! {
     static ref KEYSHARE_CACHE: Arc<Mutex<HashMap<NamedGroup, KeyExchange>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -179,26 +183,39 @@ impl KeyExchange {
             .encapsulate(&ecdh_params.public.0)
     }
 
+    #[cfg(feature = "keyshare_cache")]
     pub fn start_ecdhe(named_group: NamedGroup) -> Option<KeyExchange> {
         let mut cache = KEYSHARE_CACHE.lock().unwrap();
         if let Some(keyexchange) = cache.get(&named_group) {
             Some(keyexchange.clone())
         } else {
-            let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
-            let rng = ring::rand::SystemRandom::new();
-            let ours = ring::agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
-
-            let pubkey = ours.compute_public_key().unwrap();
-
-            let kx = KeyExchange {
-                group: named_group,
-                alg,
-                privkey: ours,
-                pubkey,
-            };
-            cache.insert(named_group, kx.clone());
-            Some(kx)
+            KeyExchange::_start_ecdhe(named_group)
+                .and_then(|kx| {
+                    cache.insert(named_group, kx.clone());
+                    kx
+                })
         }
+    }
+
+    #[cfg(not(feature = "keyshare_cache"))]
+    pub fn start_ecdhe(named_group: NamedGroup) -> Option<KeyExchange> {
+        KeyExchange::_start_ecdhe(named_group)
+    }
+
+    fn _start_ecdhe(named_group: NamedGroup) -> Option<KeyExchange> {
+        let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
+        let rng = ring::rand::SystemRandom::new();
+        let ours = ring::agreement::EphemeralPrivateKey::generate(alg, &rng).unwrap();
+
+        let pubkey = ours.compute_public_key().unwrap();
+
+        let kx = KeyExchange {
+            group: named_group,
+            alg,
+            privkey: ours,
+            pubkey,
+        };
+        Some(kx)
     }
 
     pub fn check_client_params(&self, kx_params: &[u8]) -> bool {
