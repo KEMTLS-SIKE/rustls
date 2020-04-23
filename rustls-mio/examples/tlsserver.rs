@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use ctrlc;
+
 use mio;
 use mio::tcp::{TcpListener, TcpStream, Shutdown};
 
@@ -582,8 +584,13 @@ fn make_config(args: &Args) -> Arc<rustls::ServerConfig> {
     Arc::new(config)
 }
 
+
 fn main() {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
+
+    ctrlc::set_handler(move || {
+        std::process::exit(0);
+    }).unwrap();
 
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| Ok(d.help(true)))
