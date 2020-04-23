@@ -2460,7 +2460,7 @@ fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImp
         .current_client_traffic_secret = write_key;
 
     // We need the client to start encrypting here.
-    println!("CLIENT ENCRYPTING TRAFFIC: {} ns", 0);
+    println!("CLIENT ENCRYPTING TRAFFIC: {} ns", handshake.start_time.elapsed().as_nanos());
     sess.common.we_now_encrypting();
     sess.common.start_traffic();
 }
