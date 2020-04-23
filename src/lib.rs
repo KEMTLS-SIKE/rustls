@@ -216,6 +216,7 @@ mod log {
     macro_rules! error    ( ($($tt:tt)*) => {{}} );
 }
 
+#[cfg(feature = "keyshare_cache")]
 #[macro_use]
 extern crate lazy_static;
 
