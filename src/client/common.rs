@@ -14,6 +14,7 @@ use crate::suites;
 use crate::log::trace;
 use webpki;
 
+use std::time::Instant;
 use std::mem;
 
 pub struct ServerCertDetails {
@@ -59,6 +60,7 @@ pub struct HandshakeDetails {
     pub sent_tls13_fake_ccs: bool,
     pub dns_name: webpki::DNSName,
     pub extra_exts: Vec<ClientExtension>,
+    start_time: Instant,
 }
 
 impl HandshakeDetails {
@@ -72,7 +74,12 @@ impl HandshakeDetails {
             sent_tls13_fake_ccs: false,
             dns_name: host_name,
             extra_exts,
+            start_time: Instant::now(),
         }
+    }
+
+    pub fn runtime(&self) -> u128 {
+        self.start_time.elapsed().as_nanos()
     }
 }
 

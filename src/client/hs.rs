@@ -125,6 +125,7 @@ fn find_session(sess: &mut ClientSessionImpl, dns_name: webpki::DNSNameRef)
     }
 }
 
+#[allow(unused)]
 fn find_kx_hint(sess: &mut ClientSessionImpl, dns_name: webpki::DNSNameRef) -> Option<NamedGroup> {
     let key = persist::ClientSessionKey::hint_for_dns_name(dns_name);
     let key_buf = key.get_encoding();
@@ -254,6 +255,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
                                mut handshake: HandshakeDetails,
                                mut hello: ClientHelloDetails,
                                retryreq: Option<&HelloRetryRequest>) -> NextState {
+    assert!(retryreq.is_none());
     // Do we have a SessionID or ticket cached for this host?
     handshake.resuming_session = find_session(sess, handshake.dns_name.as_ref());
     let (session_id, ticket, resume_version) = if handshake.resuming_session.is_some() {
@@ -289,11 +291,15 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         // - if not, we might have a hint of what the server supports
         // - if not, send just X25519.
         //
+        /*
         let groups = retryreq.and_then(|req| req.get_requested_key_share_group())
             .or_else(|| find_kx_hint(sess, handshake.dns_name.as_ref()))
             .or_else(|| Some(DEFAULT_GROUP)) // XX DEFAULT KEM
             .map(|grp| vec![ grp ])
             .unwrap();
+        */
+
+        let groups = vec![DEFAULT_GROUP];
 
         for group in groups {
             // in reply to HelloRetryRequest, we must not alter any existing key
@@ -452,6 +458,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
 
     sess.common.hs_transcript.add_message(&ch);
     sess.common.send_msg(ch, false);
+    println!("EMITTED CH: {} ns", handshake.runtime());
 
     // Calculate the hash of ClientHello and use it to derive EarlyTrafficSecret
     if sess.early_data.is_enabled() {
@@ -592,7 +599,7 @@ impl ExpectServerHello {
         let shared = our_key_share.decapsulate(&their_key_share.payload.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed"
                                                          .to_string()))?;
-        println!("Shared secret = {:?}", shared.premaster_secret);
+        //println!("Shared secret = {:?}", shared.premaster_secret);
 
         save_kx_hint(sess, self.handshake.dns_name.as_ref(), their_key_share.group);
         sess.common.get_mut_key_schedule().input_secret(&shared.premaster_secret);
@@ -638,6 +645,7 @@ impl ExpectServerHello {
                 server: key_schedule.current_server_traffic_secret.clone(),
             });
         }
+        println!("DERIVED EPHEMERAL KEYS: {} ns", self.handshake.runtime());
 
         Ok(())
     }
@@ -691,6 +699,7 @@ impl State for ExpectServerHello {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
         let server_hello = extract_handshake!(m, HandshakePayload::ServerHello).unwrap();
         trace!("We got ServerHello {:#?}", server_hello);
+        println!("RECEIVED SH: {} ns", self.handshake.runtime());
 
         use crate::ProtocolVersion::{TLSv1_2, TLSv1_3};
         let tls13_supported = sess.config.supports_version(TLSv1_3);
@@ -1439,6 +1448,7 @@ impl State for ExpectTLS13CertificateVerify {
 
         sess.server_cert_chain = self.server_cert.take_chain();
         sess.common.hs_transcript.add_message(&m);
+        println!("AUTHENTICATED SERVER: {} ns", self.handshake.runtime());
 
         Ok(self.into_expect_tls13_finished(certv, sigv))
     }
@@ -2223,6 +2233,8 @@ impl State for ExpectTLS13Finished {
 
         sess.common.we_now_encrypting();
         sess.common.start_traffic();
+
+        println!("HANDSHAKE COMPLETED: {} ns", st.handshake.runtime());
 
         let st = st.into_expect_tls13_traffic(fin);
         #[cfg(feature = "quic")] {

@@ -355,6 +355,7 @@ impl ExpectClientHello {
         let kxr = suites::KeyExchange::start_ecdhe(share.group)
             .and_then(|kx| kx.encapsulate(&share.payload.0))
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
+        self.handshake.print_runtime("ENCAPSULATED EPHEMERAL");
 
         let kse = KeyShareEntry::new(share.group, kxr.ciphertext.unwrap().as_ref());
         extensions.push(ServerExtension::KeyShare(kse));
@@ -389,6 +390,7 @@ impl ExpectClientHello {
         trace!("sending server hello {:?}", sh);
         sess.common.hs_transcript.add_message(&sh);
         sess.common.send_msg(sh, false);
+        self.handshake.print_runtime("EMITTED SH");
 
         // Start key schedule
         let suite = sess.common.get_suite_assert();
@@ -412,7 +414,7 @@ impl ExpectClientHello {
             key_schedule.input_empty();
         }
         key_schedule.input_secret(&kxr.premaster_secret);
-        println!("server secret: {:?}", kxr.premaster_secret);
+        //println!("server secret: {:?}", kxr.premaster_secret);
 
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
         let write_key = key_schedule.derive(SecretKind::ServerHandshakeTrafficSecret, &handshake_hash);
@@ -425,6 +427,7 @@ impl ExpectClientHello {
         sess.config.key_log.log(sess.common.protocol.labels().client_handshake_traffic_secret,
                                 &self.handshake.randoms.client,
                                 &read_key);
+        self.handshake.print_runtime("DERIVED EPHEMERAL KEYS");
 
         #[cfg(feature = "quic")] {
             sess.common.quic.hs_secrets = Some(quic::Secrets {
@@ -436,6 +439,7 @@ impl ExpectClientHello {
         key_schedule.current_client_traffic_secret = read_key;
         key_schedule.current_server_traffic_secret = write_key;
         sess.common.set_key_schedule(key_schedule);
+        self.handshake.print_runtime("SERVER ENCRYPTING TRAFFIC");
 
         Ok(())
     }
@@ -636,6 +640,7 @@ impl ExpectClientHello {
         sess.common.hs_transcript.add_message(&m);
         self.handshake.hash_at_server_fin = sess.common.hs_transcript.get_current_hash();
         sess.common.send_msg(m, true);
+        self.handshake.print_runtime("EMITTED SF");
 
         // Now move to application data keys.
         sess.common.get_mut_key_schedule().input_empty();
@@ -1038,6 +1043,7 @@ impl State for ExpectClientHello {
     }
 
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
+        self.handshake.start_time = std::time::Instant::now();
         let client_hello = extract_handshake!(m, HandshakePayload::ClientHello).unwrap();
         let tls13_enabled = sess.config.supports_version(ProtocolVersion::TLSv1_3);
         let tls12_enabled = sess.config.supports_version(ProtocolVersion::TLSv1_2);
@@ -1883,6 +1889,8 @@ impl State for ExpectTLS13Finished {
                 return Ok(Box::new(ExpectQUICTraffic { _fin_verified: fin }));
             }
         }
+
+        self.handshake.print_runtime("HANDSHAKE COMPLETED");
 
         Ok(self.into_expect_tls13_traffic(fin))
     }
