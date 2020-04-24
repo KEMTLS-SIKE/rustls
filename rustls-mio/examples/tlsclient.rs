@@ -41,7 +41,7 @@ struct TlsClient {
 impl TlsClient {
     fn ready(&mut self,
              poll: &mut mio::Poll,
-             ev: &mio::Event) {
+             ev: &mio::Event) -> bool {
         assert_eq!(ev.token(), CLIENT);
 
         if ev.readiness().is_readable() {
@@ -54,10 +54,16 @@ impl TlsClient {
 
         if self.is_closed() {
             println!("Connection closed");
-            process::exit(if self.clean_closure { 0 } else { 1 });
+            if self.clean_closure {
+                return true;
+            } else {
+                println!("Unclean exit");
+                process::exit(1);
+            }
         }
 
         self.reregister(poll);
+        false
     }
 }
 
@@ -135,7 +141,7 @@ impl TlsClient {
         let mut plaintext = Vec::new();
         let rc = self.tls_session.read_to_end(&mut plaintext);
         if !plaintext.is_empty() {
-            io::stdout().write_all(&plaintext).unwrap();
+            //io::stdout().write_all(&plaintext).unwrap();
         }
 
         // If that fails, the peer might have started a clean TLS-level
@@ -301,6 +307,7 @@ Usage:
   tlsclient (--help | -h)
 
 Options:
+    -l, --loops LOOPS   Number of loops
     -p, --port PORT     Connect to PORT [default: 443].
     --http              Send a basic HTTP GET request for /.
     --cafile CAFILE     Read root certificates from CAFILE.
@@ -325,6 +332,7 @@ Options:
 
 #[derive(Debug, Deserialize)]
 struct Args {
+    flag_loops: Option<u16>,
     flag_port: Option<u16>,
     flag_http: bool,
     flag_verbose: bool,
@@ -532,36 +540,43 @@ fn main() {
             .init();
     }
 
+    let num_loops = args.flag_loops.unwrap_or(1);
     let port = args.flag_port.unwrap_or(443);
     let addr = lookup_ipv4(args.arg_hostname.as_str(), port);
 
     let config = make_config(&args);
-
-    let sock = TcpStream::connect(&addr).unwrap();
     let dns_name = webpki::DNSNameRef::try_from_ascii_str(&args.arg_hostname).unwrap();
-    let mut tlsclient = TlsClient::new(sock, dns_name, config);
 
-    if args.flag_http {
-        let httpreq = format!("GET / HTTP/1.0\r\nHost: {}\r\nConnection: \
+    for i in 0..num_loops {
+        println!("Connecting to server for iteration {} of {}", i, num_loops);
+        let sock = TcpStream::connect(&addr).unwrap();
+        let mut tlsclient = TlsClient::new(sock, dns_name, config.clone());
+
+        if args.flag_http {
+            let httpreq = format!("GET / HTTP/1.0\r\nHost: {}\r\nConnection: \
                                close\r\nAccept-Encoding: identity\r\n\r\n",
-                              args.arg_hostname);
-        tlsclient.write_all(httpreq.as_bytes()).unwrap();
-    } else {
-        let mut stdin = io::stdin();
-        tlsclient.read_source_to_end(&mut stdin).unwrap();
-    }
+                               args.arg_hostname);
+            tlsclient.write_all(httpreq.as_bytes()).unwrap();
+        } else {
+            let mut stdin = io::stdin();
+            tlsclient.read_source_to_end(&mut stdin).unwrap();
+        }
 
-    let mut poll = mio::Poll::new()
-        .unwrap();
-    let mut events = mio::Events::with_capacity(32);
-    tlsclient.register(&mut poll);
-
-    loop {
-        poll.poll(&mut events, None)
+        let mut poll = mio::Poll::new()
             .unwrap();
+        let mut events = mio::Events::with_capacity(32);
+        tlsclient.register(&mut poll);
 
-        for ev in events.iter() {
-            tlsclient.ready(&mut poll, &ev);
+        'outer: loop {
+            poll.poll(&mut events, None)
+                .unwrap();
+
+            for ev in events.iter() {
+                let stop = tlsclient.ready(&mut poll, &ev);
+                if stop {
+                    break 'outer;
+                }
+            }
         }
     }
 }
