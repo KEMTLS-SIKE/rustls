@@ -215,186 +215,51 @@ pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
         (SignatureScheme::FALCON1024, &signature::FALCON1024),
         (SignatureScheme::MQDSS3148, &signature::MQDSS3148),
         (SignatureScheme::MQDSS3164, &signature::MQDSS3164),
-        (
-            SignatureScheme::RAINBOW_IA_CLASSIC,
-            &signature::RAINBOW_IA_CLASSIC,
-        ),
-        (
-            SignatureScheme::RAINBOW_IA_CYCLIC,
-            &signature::RAINBOW_IA_CYCLIC,
-        ),
-        (
-            SignatureScheme::RAINBOW_IA_CYCLIC_COMPRESSED,
-            &signature::RAINBOW_IA_CYCLIC_COMPRESSED,
-        ),
-        (
-            SignatureScheme::RAINBOW_II_ICCLASSIC,
-            &signature::RAINBOW_II_ICCLASSIC,
-        ),
-        (
-            SignatureScheme::RAINBOW_II_IC_CYCLIC,
-            &signature::RAINBOW_II_IC_CYCLIC,
-        ),
-        (
-            SignatureScheme::RAINBOW_II_IC_CYCLIC_COMPRESSED,
-            &signature::RAINBOW_II_IC_CYCLIC_COMPRESSED,
-        ),
-        (
-            SignatureScheme::RAINBOW_VC_CLASSIC,
-            &signature::RAINBOW_VC_CLASSIC,
-        ),
-        (
-            SignatureScheme::RAINBOW_VC_CYCLIC,
-            &signature::RAINBOW_VC_CYCLIC,
-        ),
-        (
-            SignatureScheme::RAINBOW_VC_CYCLIC_COMPRESSED,
-            &signature::RAINBOW_VC_CYCLIC_COMPRESSED,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA128F_ROBUST,
-            &signature::SPHINCS_HARAKA128F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA128F_SIMPLE,
-            &signature::SPHINCS_HARAKA128F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA128S_ROBUST,
-            &signature::SPHINCS_HARAKA128S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA128S_SIMPLE,
-            &signature::SPHINCS_HARAKA128S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA192F_ROBUST,
-            &signature::SPHINCS_HARAKA192F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA192F_SIMPLE,
-            &signature::SPHINCS_HARAKA192F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA192S_ROBUST,
-            &signature::SPHINCS_HARAKA192S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA192S_SIMPLE,
-            &signature::SPHINCS_HARAKA192S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA256F_ROBUST,
-            &signature::SPHINCS_HARAKA256F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA256F_SIMPLE,
-            &signature::SPHINCS_HARAKA256F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA256S_ROBUST,
-            &signature::SPHINCS_HARAKA256S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_HARAKA256S_SIMPLE,
-            &signature::SPHINCS_HARAKA256S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256128F_ROBUST,
-            &signature::SPHINCS_SHA256128F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256128F_SIMPLE,
-            &signature::SPHINCS_SHA256128F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256128S_ROBUST,
-            &signature::SPHINCS_SHA256128S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256128S_SIMPLE,
-            &signature::SPHINCS_SHA256128S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256192F_ROBUST,
-            &signature::SPHINCS_SHA256192F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256192F_SIMPLE,
-            &signature::SPHINCS_SHA256192F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256192S_ROBUST,
-            &signature::SPHINCS_SHA256192S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256192S_SIMPLE,
-            &signature::SPHINCS_SHA256192S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256256F_ROBUST,
-            &signature::SPHINCS_SHA256256F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256256F_SIMPLE,
-            &signature::SPHINCS_SHA256256F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256256S_ROBUST,
-            &signature::SPHINCS_SHA256256S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHA256256S_SIMPLE,
-            &signature::SPHINCS_SHA256256S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256128F_ROBUST,
-            &signature::SPHINCS_SHAKE256128F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256128F_SIMPLE,
-            &signature::SPHINCS_SHAKE256128F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256128S_ROBUST,
-            &signature::SPHINCS_SHAKE256128S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256128S_SIMPLE,
-            &signature::SPHINCS_SHAKE256128S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256192F_ROBUST,
-            &signature::SPHINCS_SHAKE256192F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256192F_SIMPLE,
-            &signature::SPHINCS_SHAKE256192F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256192S_ROBUST,
-            &signature::SPHINCS_SHAKE256192S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256192S_SIMPLE,
-            &signature::SPHINCS_SHAKE256192S_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256256F_ROBUST,
-            &signature::SPHINCS_SHAKE256256F_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256256F_SIMPLE,
-            &signature::SPHINCS_SHAKE256256F_SIMPLE,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256256S_ROBUST,
-            &signature::SPHINCS_SHAKE256256S_ROBUST,
-        ),
-        (
-            SignatureScheme::SPHINCS_SHAKE256256S_SIMPLE,
-            &signature::SPHINCS_SHAKE256256S_SIMPLE,
-        ),
+        (SignatureScheme::RAINBOW_IA_CLASSIC, &signature::RAINBOW_IA_CLASSIC),
+        (SignatureScheme::RAINBOW_IA_CYCLIC, &signature::RAINBOW_IA_CYCLIC),
+        (SignatureScheme::RAINBOW_IA_CYCLIC_COMPRESSED, &signature::RAINBOW_IA_CYCLIC_COMPRESSED),
+        (SignatureScheme::RAINBOW_II_ICCLASSIC, &signature::RAINBOW_II_ICCLASSIC),
+        (SignatureScheme::RAINBOW_II_IC_CYCLIC, &signature::RAINBOW_II_IC_CYCLIC),
+        (SignatureScheme::RAINBOW_II_IC_CYCLIC_COMPRESSED, &signature::RAINBOW_II_IC_CYCLIC_COMPRESSED),
+        (SignatureScheme::RAINBOW_VC_CLASSIC, &signature::RAINBOW_VC_CLASSIC),
+        (SignatureScheme::RAINBOW_VC_CYCLIC, &signature::RAINBOW_VC_CYCLIC),
+        (SignatureScheme::RAINBOW_VC_CYCLIC_COMPRESSED, &signature::RAINBOW_VC_CYCLIC_COMPRESSED),
+        (SignatureScheme::SPHINCS_HARAKA128F_ROBUST, &signature::SPHINCS_HARAKA128F_ROBUST),
+        (SignatureScheme::SPHINCS_HARAKA128F_SIMPLE, &signature::SPHINCS_HARAKA128F_SIMPLE),
+        (SignatureScheme::SPHINCS_HARAKA128S_ROBUST, &signature::SPHINCS_HARAKA128S_ROBUST),
+        (SignatureScheme::SPHINCS_HARAKA128S_SIMPLE, &signature::SPHINCS_HARAKA128S_SIMPLE),
+        (SignatureScheme::SPHINCS_HARAKA192F_ROBUST, &signature::SPHINCS_HARAKA192F_ROBUST),
+        (SignatureScheme::SPHINCS_HARAKA192F_SIMPLE, &signature::SPHINCS_HARAKA192F_SIMPLE),
+        (SignatureScheme::SPHINCS_HARAKA192S_ROBUST, &signature::SPHINCS_HARAKA192S_ROBUST),
+        (SignatureScheme::SPHINCS_HARAKA192S_SIMPLE, &signature::SPHINCS_HARAKA192S_SIMPLE),
+        (SignatureScheme::SPHINCS_HARAKA256F_ROBUST, &signature::SPHINCS_HARAKA256F_ROBUST),
+        (SignatureScheme::SPHINCS_HARAKA256F_SIMPLE, &signature::SPHINCS_HARAKA256F_SIMPLE),
+        (SignatureScheme::SPHINCS_HARAKA256S_ROBUST, &signature::SPHINCS_HARAKA256S_ROBUST),
+        (SignatureScheme::SPHINCS_HARAKA256S_SIMPLE, &signature::SPHINCS_HARAKA256S_SIMPLE),
+        (SignatureScheme::SPHINCS_SHA256128F_ROBUST, &signature::SPHINCS_SHA256128F_ROBUST),
+        (SignatureScheme::SPHINCS_SHA256128F_SIMPLE, &signature::SPHINCS_SHA256128F_SIMPLE),
+        (SignatureScheme::SPHINCS_SHA256128S_ROBUST, &signature::SPHINCS_SHA256128S_ROBUST),
+        (SignatureScheme::SPHINCS_SHA256128S_SIMPLE, &signature::SPHINCS_SHA256128S_SIMPLE),
+        (SignatureScheme::SPHINCS_SHA256192F_ROBUST, &signature::SPHINCS_SHA256192F_ROBUST),
+        (SignatureScheme::SPHINCS_SHA256192F_SIMPLE, &signature::SPHINCS_SHA256192F_SIMPLE),
+        (SignatureScheme::SPHINCS_SHA256192S_ROBUST, &signature::SPHINCS_SHA256192S_ROBUST),
+        (SignatureScheme::SPHINCS_SHA256192S_SIMPLE, &signature::SPHINCS_SHA256192S_SIMPLE),
+        (SignatureScheme::SPHINCS_SHA256256F_ROBUST, &signature::SPHINCS_SHA256256F_ROBUST),
+        (SignatureScheme::SPHINCS_SHA256256F_SIMPLE, &signature::SPHINCS_SHA256256F_SIMPLE),
+        (SignatureScheme::SPHINCS_SHA256256S_ROBUST, &signature::SPHINCS_SHA256256S_ROBUST),
+        (SignatureScheme::SPHINCS_SHA256256S_SIMPLE, &signature::SPHINCS_SHA256256S_SIMPLE),
+        (SignatureScheme::SPHINCS_SHAKE256128F_ROBUST, &signature::SPHINCS_SHAKE256128F_ROBUST),
+        (SignatureScheme::SPHINCS_SHAKE256128F_SIMPLE, &signature::SPHINCS_SHAKE256128F_SIMPLE),
+        (SignatureScheme::SPHINCS_SHAKE256128S_ROBUST, &signature::SPHINCS_SHAKE256128S_ROBUST),
+        (SignatureScheme::SPHINCS_SHAKE256128S_SIMPLE, &signature::SPHINCS_SHAKE256128S_SIMPLE),
+        (SignatureScheme::SPHINCS_SHAKE256192F_ROBUST, &signature::SPHINCS_SHAKE256192F_ROBUST),
+        (SignatureScheme::SPHINCS_SHAKE256192F_SIMPLE, &signature::SPHINCS_SHAKE256192F_SIMPLE),
+        (SignatureScheme::SPHINCS_SHAKE256192S_ROBUST, &signature::SPHINCS_SHAKE256192S_ROBUST),
+        (SignatureScheme::SPHINCS_SHAKE256192S_SIMPLE, &signature::SPHINCS_SHAKE256192S_SIMPLE),
+        (SignatureScheme::SPHINCS_SHAKE256256F_ROBUST, &signature::SPHINCS_SHAKE256256F_ROBUST),
+        (SignatureScheme::SPHINCS_SHAKE256256F_SIMPLE, &signature::SPHINCS_SHAKE256256F_SIMPLE),
+        (SignatureScheme::SPHINCS_SHAKE256256S_ROBUST, &signature::SPHINCS_SHAKE256256S_ROBUST),
+        (SignatureScheme::SPHINCS_SHAKE256256S_SIMPLE, &signature::SPHINCS_SHAKE256256S_SIMPLE),
         (SignatureScheme::PICNIC_L1_FS, &signature::PICNIC_L1_FS),
         (SignatureScheme::PICNIC_L1_UR, &signature::PICNIC_L1_UR),
         (SignatureScheme::PICNIC_L3_FS, &signature::PICNIC_L3_FS),
@@ -406,7 +271,8 @@ pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
         (SignatureScheme::PICNIC2_L5_FS, &signature::PICNIC2_L5_FS),
         (SignatureScheme::Q_TESLA_PI, &signature::Q_TESLA_PI),
         (SignatureScheme::Q_TESLA_PIII, &signature::Q_TESLA_PIII),
-    ];
+        (SignatureScheme::XMSS, &signature::XMSS),
+        ];
     for (scheme, alg) in options.iter() {
         if let Ok(scheme) = PQSchemeSigner::new(der, *scheme, alg) {
             debug!("Found {:?}", alg);
@@ -687,5 +553,6 @@ pub fn supported_sign_tls13() -> &'static [SignatureScheme] {
         SignatureScheme::PICNIC2_L5_FS,
         SignatureScheme::Q_TESLA_PI,
         SignatureScheme::Q_TESLA_PIII,
+        SignatureScheme::XMSS,
     ]
 }

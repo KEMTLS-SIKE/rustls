@@ -1410,6 +1410,7 @@ impl State for ExpectTLS13CertificateVerify {
         check_handshake_message(m, &[HandshakeType::CertificateVerify])
     }
 
+    #[allow(unused)]
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
         let cert_verify = extract_handshake!(m, HandshakePayload::CertificateVerify).unwrap();
 
