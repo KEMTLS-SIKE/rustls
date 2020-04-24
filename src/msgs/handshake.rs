@@ -243,9 +243,7 @@ impl DecomposedSignatureScheme for SignatureScheme {
             (RAINBOW_IA_CYCLIC_COMPRESSED, _) => SignatureScheme::RAINBOW_IA_CYCLIC_COMPRESSED,
             (RAINBOW_II_ICCLASSIC, _) => SignatureScheme::RAINBOW_II_ICCLASSIC,
             (RAINBOW_II_IC_CYCLIC, _) => SignatureScheme::RAINBOW_II_IC_CYCLIC,
-            (RAINBOW_II_IC_CYCLIC_COMPRESSED, _) => {
-                SignatureScheme::RAINBOW_II_IC_CYCLIC_COMPRESSED
-            }
+            (RAINBOW_II_IC_CYCLIC_COMPRESSED, _) => SignatureScheme::RAINBOW_II_IC_CYCLIC_COMPRESSED,
             (RAINBOW_VC_CLASSIC, _) => SignatureScheme::RAINBOW_VC_CLASSIC,
             (RAINBOW_VC_CYCLIC, _) => SignatureScheme::RAINBOW_VC_CYCLIC,
             (RAINBOW_VC_CYCLIC_COMPRESSED, _) => SignatureScheme::RAINBOW_VC_CYCLIC_COMPRESSED,
@@ -296,6 +294,7 @@ impl DecomposedSignatureScheme for SignatureScheme {
             (PICNIC2_L5_FS, _) => SignatureScheme::PICNIC2_L5_FS,
             (Q_TESLA_PI, _) => SignatureScheme::Q_TESLA_PI,
             (Q_TESLA_PIII, _) => SignatureScheme::Q_TESLA_PIII,
+            (XMSS, _) => SignatureScheme::XMSS,
 
             (RSA, SHA1) => SignatureScheme::RSA_PKCS1_SHA1,
             (RSA, SHA256) => SignatureScheme::RSA_PKCS1_SHA256,
