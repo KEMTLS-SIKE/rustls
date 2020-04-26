@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ctrlc;
 
 use mio;
@@ -13,6 +11,9 @@ use std::io;
 use std::net;
 use std::io::{Write, Read, BufReader};
 use std::collections::HashMap;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::time::Duration;
+
 
 #[macro_use]
 extern crate serde_derive;
@@ -588,8 +589,12 @@ fn make_config(args: &Args) -> Arc<rustls::ServerConfig> {
 fn main() {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
 
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let stopper = should_stop.clone();
+
     ctrlc::set_handler(move || {
-        std::process::exit(0);
+        println!("Stopping");
+        stopper.store(true, Ordering::Relaxed);
     }).unwrap();
 
     let args: Args = Docopt::new(USAGE)
@@ -630,8 +635,11 @@ fn main() {
 
     let mut events = mio::Events::with_capacity(256);
     loop {
-        poll.poll(&mut events, None)
-            .unwrap();
+        poll.poll(&mut events, Some(Duration::from_secs(1))).unwrap();
+
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         for event in events.iter() {
             match event.token() {
