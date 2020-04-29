@@ -209,14 +209,16 @@ pub fn any_ecdsa_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> 
 pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
     let options = [
         (SignatureScheme::DILITHIUM2, &signature::DILITHIUM2),
+        (SignatureScheme::FALCON512, &signature::FALCON512),
+        (SignatureScheme::RAINBOW_IA_CYCLIC, &signature::RAINBOW_IA_CYCLIC),
+        (SignatureScheme::XMSS, &signature::XMSS),
+        (SignatureScheme::GEMSS128, &signature::GEMSS128),
         (SignatureScheme::DILITHIUM3, &signature::DILITHIUM3),
         (SignatureScheme::DILITHIUM4, &signature::DILITHIUM4),
-        (SignatureScheme::FALCON512, &signature::FALCON512),
         (SignatureScheme::FALCON1024, &signature::FALCON1024),
         (SignatureScheme::MQDSS3148, &signature::MQDSS3148),
         (SignatureScheme::MQDSS3164, &signature::MQDSS3164),
         (SignatureScheme::RAINBOW_IA_CLASSIC, &signature::RAINBOW_IA_CLASSIC),
-        (SignatureScheme::RAINBOW_IA_CYCLIC, &signature::RAINBOW_IA_CYCLIC),
         (SignatureScheme::RAINBOW_IA_CYCLIC_COMPRESSED, &signature::RAINBOW_IA_CYCLIC_COMPRESSED),
         (SignatureScheme::RAINBOW_II_ICCLASSIC, &signature::RAINBOW_II_ICCLASSIC),
         (SignatureScheme::RAINBOW_II_IC_CYCLIC, &signature::RAINBOW_II_IC_CYCLIC),
@@ -271,7 +273,6 @@ pub fn any_pq_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
         (SignatureScheme::PICNIC2_L5_FS, &signature::PICNIC2_L5_FS),
         (SignatureScheme::Q_TESLA_PI, &signature::Q_TESLA_PI),
         (SignatureScheme::Q_TESLA_PIII, &signature::Q_TESLA_PIII),
-        (SignatureScheme::XMSS, &signature::XMSS),
         ];
     for (scheme, alg) in options.iter() {
         if let Ok(scheme) = PQSchemeSigner::new(der, *scheme, alg) {
@@ -580,5 +581,6 @@ pub fn supported_sign_tls13() -> &'static [SignatureScheme] {
         SignatureScheme::Q_TESLA_PI,
         SignatureScheme::Q_TESLA_PIII,
         SignatureScheme::XMSS,
+        SignatureScheme::GEMSS128,
     ]
 }

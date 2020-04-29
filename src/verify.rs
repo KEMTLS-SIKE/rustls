@@ -94,6 +94,7 @@ static SUPPORTED_SIG_ALGS: SignatureAlgorithms = &[
     &webpki::Q_TESLA_PI,
     &webpki::Q_TESLA_PIII,
     &webpki::XMSS,
+    &webpki::GEMSS128,
 ];
 
 /// Marker types.  These are used to bind the fact some verification
@@ -518,6 +519,7 @@ fn convert_alg_tls13(
         Q_TESLA_PI => Ok(&webpki::Q_TESLA_PI),
         Q_TESLA_PIII => Ok(&webpki::Q_TESLA_PIII),
         XMSS => Ok(&webpki::XMSS),
+        GEMSS128 => Ok(&webpki::GEMSS128),
         _ => {
             let error_msg = format!("received unsupported sig scheme {:?}", scheme);
             Err(TLSError::PeerMisbehavedError(error_msg))

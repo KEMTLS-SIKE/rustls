@@ -108,7 +108,8 @@ enum_builder! {
         PICNIC2_L5_FS => 0x40,
         Q_TESLA_PI => 0x41,
         Q_TESLA_PIII => 0x42,
-        XMSS => 0x43
+        XMSS => 0x43,
+        GEMSS128 => 0x44
     }
 }
 
@@ -930,7 +931,8 @@ enum_builder! {
         PICNIC2_L5_FS => 0xfe3c,
         Q_TESLA_PI => 0xfe3d,
         Q_TESLA_PIII => 0xfe3e,
-        XMSS => 0xfe3f
+        XMSS => 0xfe3f,
+        GEMSS128 => 0xfe40
     }
 }
 
