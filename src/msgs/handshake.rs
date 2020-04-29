@@ -295,6 +295,7 @@ impl DecomposedSignatureScheme for SignatureScheme {
             (Q_TESLA_PI, _) => SignatureScheme::Q_TESLA_PI,
             (Q_TESLA_PIII, _) => SignatureScheme::Q_TESLA_PIII,
             (XMSS, _) => SignatureScheme::XMSS,
+            (GEMSS128, _) => SignatureScheme::GEMSS128,
 
             (RSA, SHA1) => SignatureScheme::RSA_PKCS1_SHA1,
             (RSA, SHA256) => SignatureScheme::RSA_PKCS1_SHA256,
