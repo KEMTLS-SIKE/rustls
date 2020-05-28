@@ -2800,6 +2800,7 @@ impl State for ExpectTLS13Traffic {
         mut m: Message,
     ) -> NextStateOrError {
         if m.is_content_type(ContentType::ApplicationData) {
+            println!("RECEIVED SERVER REPLY: {} ns", self.handshake.start_time.elapsed().as_nanos());
             sess.common
                 .take_received_plaintext(m.take_opaque_payload().unwrap());
         } else if m.is_handshake_type(HandshakeType::NewSessionTicket) {
