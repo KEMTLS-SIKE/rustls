@@ -1512,9 +1512,10 @@ impl State for ExpectKEMTLSClientKX {
         trace!("Switching key schedule");
         sess.common.get_mut_key_schedule().input_secret(key);
         let handshake_hash = &sess.common.hs_transcript.get_current_hash();
-        sess.common
-            .get_mut_key_schedule()
-            .derive_with_hash(handshake_hash);
+        // in a previous version, CAHS keys used to be derived from dAHS
+        //sess.common
+        //    .get_mut_key_schedule()
+        //    .derive_with_hash(handshake_hash);
         let write_key = sess.common.get_key_schedule().derive(
             SecretKind::ServerAuthenticatedHandshakeTrafficSecret,
             handshake_hash,

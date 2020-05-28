@@ -1335,10 +1335,11 @@ impl ExpectTLS13Certificate {
             .get_mut_key_schedule()
             .input_secret(&shared_secret);
         let handshake_hash = &session.common.hs_transcript.get_current_hash();
-        session
-            .common
-            .get_mut_key_schedule()
-            .derive_with_hash(handshake_hash);
+        // in a previous version, this derived dAHS to derive the following keys from.
+        //session
+        //    .common
+        //    .get_mut_key_schedule()
+        //    .derive_with_hash(handshake_hash);
         check_aligned_handshake(session).unwrap();
 
         let suite = session.common.get_suite_assert();
