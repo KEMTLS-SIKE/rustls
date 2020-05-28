@@ -2410,6 +2410,7 @@ impl State for ExpectTLS13Traffic {
 
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, mut m: Message) -> NextStateOrError {
         if m.is_content_type(ContentType::ApplicationData) {
+            println!("RECEIVED SERVER REPLY: {} ns", self.handshake.runtime());
             sess.common.take_received_plaintext(m.take_opaque_payload().unwrap());
         } else if m.is_handshake_type(HandshakeType::NewSessionTicket) {
             self.handle_new_ticket_tls13(sess, m)?;
