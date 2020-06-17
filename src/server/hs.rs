@@ -640,9 +640,9 @@ impl ExpectClientHello {
             }),
         };
 
-        trace!("sending certificate {:?}", c);
         sess.common.hs_transcript.add_message(&c);
         sess.common.send_msg(c, true);
+        println!("SENT CERTIFICATE: {} ns", self.handshake.runtime());
     }
 
     #[allow(unused)]
@@ -1492,6 +1492,7 @@ impl State for ExpectKEMTLSClientKX {
 
         // 1. Take the ciphertext
         let their_keyshare = &client_kx.0;
+        println!("RECEIVED CKEX: {} ns", self.handshake.runtime());
 
         // 2. Decapsulate
         let private_key = untrusted::Input::from(self.server_key.key.get_key());
@@ -1503,7 +1504,7 @@ impl State for ExpectKEMTLSClientKX {
                 debug!("{:#?}", e);
                 TLSError::General("didn't work to decapsulate from CKEX".to_owned())
             })?;
-        println!("DECAPSULATED FROM CLIENT: {} ns", self.handshake.runtime());
+        println!("DECAPSULATED CKEX: {} ns", self.handshake.runtime());
 
         // 3. Add this key into the key derivation.
         trace!("Inputting secret {:?}", key);
