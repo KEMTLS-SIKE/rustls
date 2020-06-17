@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::process;
 
 use mio;
-use mio::tcp::TcpStream;
+use mio::net::TcpStream;
 
 use std::net::SocketAddr;
 use std::str;
@@ -22,9 +22,6 @@ use rustls;
 use webpki;
 use webpki_roots;
 
-
-mod util;
-
 use rustls::Session;
 
 const CLIENT: mio::Token = mio::Token(0);
@@ -39,16 +36,14 @@ struct TlsClient {
 }
 
 impl TlsClient {
-    fn ready(&mut self,
-             poll: &mut mio::Poll,
-             ev: &mio::Event) -> bool {
+    fn ready(&mut self, ev: &mio::event::Event) -> bool{
         assert_eq!(ev.token(), CLIENT);
 
-        if ev.readiness().is_readable() {
+        if ev.is_readable() {
             self.do_read();
         }
 
-        if ev.readiness().is_writable() {
+        if ev.is_writable() {
             self.do_write();
         }
 
@@ -61,8 +56,6 @@ impl TlsClient {
                 process::exit(1);
             }
         }
-
-        self.reregister(poll);
         false
     }
 }
@@ -141,6 +134,7 @@ impl TlsClient {
         let mut plaintext = Vec::new();
         let rc = self.tls_session.read_to_end(&mut plaintext);
         if !plaintext.is_empty() {
+            // suppress plaintext
             //io::stdout().write_all(&plaintext).unwrap();
         }
 
@@ -155,45 +149,32 @@ impl TlsClient {
         }
     }
 
-    #[cfg(target_os = "windows")]
     fn do_write(&mut self) {
         self.tls_session.write_tls(&mut self.socket).unwrap();
     }
 
-    #[cfg(not(target_os = "windows"))]
-    fn do_write(&mut self) {
-        use crate::util::WriteVAdapter;
-        self.tls_session.writev_tls(&mut WriteVAdapter::new(&mut self.socket)).unwrap();
+    fn register(&mut self, registry: &mio::Registry) {
+        let interest = self.ready_interest();
+        registry.register(&mut self.socket, CLIENT, interest).unwrap();
     }
 
-    fn register(&self, poll: &mut mio::Poll) {
-        poll.register(&self.socket,
-                      CLIENT,
-                      self.ready_interest(),
-                      mio::PollOpt::level() | mio::PollOpt::oneshot())
-            .unwrap();
-    }
-
-    fn reregister(&self, poll: &mut mio::Poll) {
-        poll.reregister(&self.socket,
-                        CLIENT,
-                        self.ready_interest(),
-                        mio::PollOpt::level() | mio::PollOpt::oneshot())
-            .unwrap();
+    fn reregister(&mut self, registry: &mio::Registry) {
+        let interest = self.ready_interest();
+        registry.reregister(&mut self.socket, CLIENT, interest).unwrap();
     }
 
     // Use wants_read/wants_write to register for different mio-level
     // IO readiness events.
-    fn ready_interest(&self) -> mio::Ready {
+    fn ready_interest(&self) -> mio::Interest {
         let rd = self.tls_session.wants_read();
         let wr = self.tls_session.wants_write();
 
         if rd && wr {
-            mio::Ready::readable() | mio::Ready::writable()
+            mio::Interest::READABLE | mio::Interest::WRITABLE
         } else if wr {
-            mio::Ready::writable()
+            mio::Interest::WRITABLE
         } else {
-            mio::Ready::readable()
+            mio::Interest::READABLE
         }
     }
 
@@ -545,11 +526,11 @@ fn main() {
     let addr = lookup_ipv4(args.arg_hostname.as_str(), port);
 
     let config = make_config(&args);
-    let dns_name = webpki::DNSNameRef::try_from_ascii_str(&args.arg_hostname).unwrap();
 
+    let dns_name = webpki::DNSNameRef::try_from_ascii_str(&args.arg_hostname).unwrap();
     for i in 0..num_loops {
         println!("Connecting to server for iteration {} of {}", i, num_loops);
-        let sock = TcpStream::connect(&addr).unwrap();
+        let sock = TcpStream::connect(addr).unwrap();
         let mut tlsclient = TlsClient::new(sock, dns_name, config.clone());
 
         if args.flag_http {
@@ -564,15 +545,16 @@ fn main() {
 
         let mut poll = mio::Poll::new()
             .unwrap();
-        let mut events = mio::Events::with_capacity(32);
-        tlsclient.register(&mut poll);
+        let mut events = mio::Events::with_capacity(1024);
+        tlsclient.register(poll.registry());
 
         'outer: loop {
             poll.poll(&mut events, None)
                 .unwrap();
 
             for ev in events.iter() {
-                let stop = tlsclient.ready(&mut poll, &ev);
+                let stop = tlsclient.ready(&ev);
+                tlsclient.reregister(poll.registry());
                 if stop {
                     break 'outer;
                 }
