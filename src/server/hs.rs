@@ -182,6 +182,7 @@ impl ExpectClientHello {
     }
 
     fn _into_expect_tls13_finished(self) -> NextState {
+        unreachable!("Shoudn't happen");
         Box::new(ExpectTLS13Finished {
             handshake: self.handshake,
             send_ticket: self.send_ticket,
