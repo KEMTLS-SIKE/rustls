@@ -1760,6 +1760,7 @@ impl ExpectTLS13Finished {
     }
 
     fn emit_stateless_ticket_tls13(&mut self, sess: &mut ServerSessionImpl) {
+        unreachable!("Shouldn't be enabled");
         debug_assert!(self.send_ticket);
         let nonce = rand::random_vec(32);
         let plain = get_server_session_value_tls13(sess, &nonce)
