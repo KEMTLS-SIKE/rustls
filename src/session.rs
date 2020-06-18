@@ -221,7 +221,9 @@ pub enum Protocol {
 pub struct Labels {
     pub client_early_traffic_secret: &'static str,
     pub client_handshake_traffic_secret: &'static str,
+    pub client_authenticated_handshake_traffic_secret: &'static str,
     pub server_handshake_traffic_secret: &'static str,
+    pub server_authenticated_handshake_traffic_secret: &'static str,
     pub client_traffic_secret_0: &'static str,
     pub server_traffic_secret_0: &'static str,
     pub client_random: &'static str,
@@ -234,7 +236,9 @@ impl Protocol {
             Protocol::Tls13 => &Labels {
                 client_early_traffic_secret: "CLIENT_EARLY_TRAFFIC_SECRET",
                 client_handshake_traffic_secret: "CLIENT_HANDSHAKE_TRAFFIC_SECRET",
+                client_authenticated_handshake_traffic_secret: "CLIENT_AUTHENTICATED_HANDSHAKE_TRAFFIC_SECRET",
                 server_handshake_traffic_secret: "SERVER_HANDSHAKE_TRAFFIC_SECRET",
+                server_authenticated_handshake_traffic_secret: "SERVER_AUTHENTICATED_HANDSHAKE_TRAFFIC_SECRET",
                 client_traffic_secret_0: "CLIENT_TRAFFIC_SECRET_0",
                 server_traffic_secret_0: "SERVER_TRAFFIC_SECRET_0",
                 client_random: "CLIENT_RANDOM",

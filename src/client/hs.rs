@@ -1355,7 +1355,7 @@ impl ExpectTLS13Certificate {
             sess.common
                 .protocol
                 .labels()
-                .client_handshake_traffic_secret,
+                .client_authenticated_handshake_traffic_secret,
             &self.handshake.randoms.client,
             &write_key,
         );
@@ -1373,7 +1373,7 @@ impl ExpectTLS13Certificate {
             sess.common
                 .protocol
                 .labels()
-                .server_handshake_traffic_secret,
+                .server_authenticated_handshake_traffic_secret,
             &self.handshake.randoms.client,
             &read_key,
         );

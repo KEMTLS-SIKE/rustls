@@ -1522,9 +1522,19 @@ impl State for ExpectKEMTLSClientKX {
             SecretKind::ServerAuthenticatedHandshakeTrafficSecret,
             handshake_hash,
         );
+        sess.config.key_log.log(
+            sess.common.protocol.labels().server_authenticated_handshake_traffic_secret,
+            &self.handshake.randoms.server,
+            &write_key,
+        );
         let read_key = sess.common.get_key_schedule().derive(
             SecretKind::ClientAuthenticatedHandshakeTrafficSecret,
             handshake_hash,
+        );
+        sess.config.key_log.log(
+            sess.common.protocol.labels().client_authenticated_handshake_traffic_secret,
+            &self.handshake.randoms.client,
+            &read_key,
         );
         sess.common
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
