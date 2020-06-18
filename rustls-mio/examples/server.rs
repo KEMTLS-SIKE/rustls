@@ -111,9 +111,11 @@ fn main() {
 
     let mut input = Vec::new();
     for stream in listener.incoming() {
+        let mut stream = stream.unwrap();
+        stream.set_nodelay(true);
         {
             let sess = rustls::ServerSession::new(&config);
-            let mut tlsstream = rustls::StreamOwned::new(sess, stream.unwrap());
+            let mut tlsstream = rustls::StreamOwned::new(sess, stream);
             let _ = tlsstream.read(&mut input).unwrap();
             tlsstream.write(b"Hello!").unwrap();
         }
