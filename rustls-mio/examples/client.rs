@@ -126,6 +126,7 @@ fn main() {
         println!("Iteration {} of {}", i, num_loops);
         let sess = rustls::ClientSession::new(&config, dns_name);
         let sock = TcpStream::connect(addr).unwrap();
+        sock.set_nodelay(true).unwrap();
         let mut tls = rustls::StreamOwned::new(sess, sock);
         tls.write_all(concat!("GET / HTTP/1.1\r\n",
                           "Connection: close\r\n",
