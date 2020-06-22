@@ -1,5 +1,4 @@
-use std::sync::Arc;
-
+use ctrlc;
 use mio;
 use mio::net::{TcpListener, TcpStream};
 
@@ -11,6 +10,8 @@ use std::io;
 use std::net;
 use std::io::{Write, Read, BufReader};
 use std::collections::HashMap;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::time::Duration;
 
 #[macro_use]
 extern crate serde_derive;
@@ -67,6 +68,7 @@ impl TlsServer {
             match self.server.accept() {
                 Ok((socket, addr)) => {
                     debug!("Accepting new connection from {:?}", addr);
+                    socket.set_nodelay(true)?;
 
                     let tls_session = rustls::ServerSession::new(&self.tls_config);
                     let mode = self.mode.clone();
@@ -585,6 +587,15 @@ fn make_config(args: &Args) -> Arc<rustls::ServerConfig> {
 fn main() {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
 
+    let should_stop = Arc::new(AtomicBool::new(false));
+    // copy to move into ctrlc handler
+    let stopper = should_stop.clone();
+
+    ctrlc::set_handler(move || {
+        println!("Stopping");
+        stopper.store(true, Ordering::Relaxed);
+    }).unwrap();
+
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| Ok(d.help(true)))
         .and_then(|d| Ok(d.version(Some(version))))
@@ -603,6 +614,7 @@ fn main() {
     let config = make_config(&args);
 
     let mut listener = TcpListener::bind(addr).expect("cannot listen on port");
+
     let mut poll = mio::Poll::new()
         .unwrap();
     poll.registry().register(&mut listener,
@@ -620,9 +632,10 @@ fn main() {
 
     let mut tlsserv = TlsServer::new(listener, mode, config);
 
-    let mut events = mio::Events::with_capacity(256);
+    let mut events = mio::Events::with_capacity(1024);
+    let timeout = Some(Duration::from_secs(1));
     loop {
-        poll.poll(&mut events, None)
+        poll.poll(&mut events, timeout)
             .unwrap();
 
         for event in events.iter() {
@@ -633,6 +646,9 @@ fn main() {
                 }
                 _ => tlsserv.conn_event(poll.registry(), &event)
             }
+        }
+        if should_stop.load(Ordering::Relaxed) {
+            break;
         }
     }
 }

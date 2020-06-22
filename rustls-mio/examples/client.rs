@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use std::net::{TcpStream, SocketAddr};
+#[allow(unused_imports)]
 use std::io::{Read, Write, BufReader, stdout};
 use std::fs;
 
@@ -15,6 +16,7 @@ use webpki_roots;
 
 use env_logger;
 
+#[allow(unused_imports)]
 use rustls::Session;
 
 const USAGE: &'static str ="

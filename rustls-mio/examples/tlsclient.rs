@@ -506,7 +506,7 @@ fn make_config(args: &Args) -> Arc<rustls::ClientConfig> {
 
 /// Parse some arguments, then make a TLS client connection
 /// somewhere.
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
 
     let args: Args = Docopt::new(USAGE)
@@ -530,27 +530,26 @@ fn main() {
     let dns_name = webpki::DNSNameRef::try_from_ascii_str(&args.arg_hostname).unwrap();
     for i in 0..num_loops {
         println!("Connecting to server for iteration {} of {}", i, num_loops);
-        let sock = TcpStream::connect(addr).unwrap();
+        let sock = TcpStream::connect(addr)?;
+        sock.set_nodelay(true)?;
         let mut tlsclient = TlsClient::new(sock, dns_name, config.clone());
 
         if args.flag_http {
             let httpreq = format!("GET / HTTP/1.0\r\nHost: {}\r\nConnection: \
                                close\r\nAccept-Encoding: identity\r\n\r\n",
                                args.arg_hostname);
-            tlsclient.write_all(httpreq.as_bytes()).unwrap();
+            tlsclient.write_all(httpreq.as_bytes())?;
         } else {
             let mut stdin = io::stdin();
-            tlsclient.read_source_to_end(&mut stdin).unwrap();
+            tlsclient.read_source_to_end(&mut stdin)?;
         }
 
-        let mut poll = mio::Poll::new()
-            .unwrap();
+        let mut poll = mio::Poll::new()?;
         let mut events = mio::Events::with_capacity(1024);
         tlsclient.register(poll.registry());
 
         'outer: loop {
-            poll.poll(&mut events, None)
-                .unwrap();
+            poll.poll(&mut events, None)?;
 
             for ev in events.iter() {
                 let stop = tlsclient.ready(&ev);
@@ -561,4 +560,5 @@ fn main() {
             }
         }
     }
+    Ok(())
 }
