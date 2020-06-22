@@ -15,6 +15,8 @@ use rustls;
 
 use env_logger;
 
+use ctrlc;
+
 const USAGE: &'static str = "
 Runs a TLS server on :PORT.  The default PORT is 443.
 
@@ -88,6 +90,10 @@ fn main() {
         .and_then(|d| Ok(d.version(Some(version))))
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
+
+    ctrlc::set_handler(|| {
+        std::process::exit(1);
+    });
 
     if args.flag_verbose {
         env_logger::Builder::new().parse_filters("trace").init();
