@@ -592,7 +592,6 @@ fn main() -> std::io::Result<()> {
     let stopper = should_stop.clone();
 
     ctrlc::set_handler(move || {
-        println!("Stopping");
         stopper.store(true, Ordering::Relaxed);
     }).unwrap();
 
