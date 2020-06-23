@@ -584,7 +584,7 @@ fn make_config(args: &Args) -> Arc<rustls::ServerConfig> {
     Arc::new(config)
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
 
     let should_stop = Arc::new(AtomicBool::new(false));
@@ -635,8 +635,11 @@ fn main() {
     let mut events = mio::Events::with_capacity(1024);
     let timeout = Some(Duration::from_secs(1));
     loop {
-        poll.poll(&mut events, timeout)
-            .unwrap();
+        poll.poll(&mut events, timeout)?;
+
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         for event in events.iter() {
             match event.token() {
@@ -647,8 +650,6 @@ fn main() {
                 _ => tlsserv.conn_event(poll.registry(), &event)
             }
         }
-        if should_stop.load(Ordering::Relaxed) {
-            break;
-        }
     }
+    Ok(())
 }
