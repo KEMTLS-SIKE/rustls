@@ -134,7 +134,8 @@ impl ChunkVecBuffer {
             return Ok(0);
         }
 
-        let used = wr.write(&self.chunks[0])?;
+        let iobufs = self.chunks.iter().map(|vec| io::IoSlice::new(&vec[..])).collect::<Vec<_>>();
+        let used = wr.write_vectored(&iobufs)?;
         self.consume(used);
         Ok(used)
     }
