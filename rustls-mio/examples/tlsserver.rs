@@ -635,7 +635,16 @@ fn main() -> std::io::Result<()> {
     let mut events = mio::Events::with_capacity(1024);
     let timeout = Some(Duration::from_secs(1));
     loop {
-        poll.poll(&mut events, timeout)?;
+        match poll.poll(&mut events, timeout) {
+            Ok(()) => (),
+            Err(err) => {
+                if err.kind() == io::ErrorKind::Interrupted {
+                    return Ok(());
+                } else {
+                    return Err(err);
+                }
+            }
+        };
 
         if should_stop.load(Ordering::Relaxed) {
             break;
