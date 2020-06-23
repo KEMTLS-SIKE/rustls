@@ -531,7 +531,7 @@ fn main() -> Result<(), std::io::Error> {
     for i in 0..num_loops {
         println!("Connecting to server for iteration {} of {}", i, num_loops);
         let sock = TcpStream::connect(addr)?;
-        sock.set_nodelay(true)?;
+        sock.set_nodelay(false)?;
         let mut tlsclient = TlsClient::new(sock, dns_name, config.clone());
 
         if args.flag_http {

@@ -68,7 +68,7 @@ impl TlsServer {
             match self.server.accept() {
                 Ok((socket, addr)) => {
                     debug!("Accepting new connection from {:?}", addr);
-                    socket.set_nodelay(true)?;
+                    socket.set_nodelay(false)?;
 
                     let tls_session = rustls::ServerSession::new(&self.tls_config);
                     let mode = self.mode.clone();
