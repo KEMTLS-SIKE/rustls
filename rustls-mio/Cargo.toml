@@ -55,5 +55,5 @@ required-features = ["logging"]
 
 
 [patch.crates-io]
-webpki = { path = "../webpki" }
-ring = { path = "../ring" }
+webpki = { path = "../../webpki" }
+ring = { path = "../../ring" }
