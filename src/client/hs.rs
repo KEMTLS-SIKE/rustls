@@ -2421,7 +2421,7 @@ fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImp
         sess.common.get_key_schedule().current_client_traffic_secret
     );
     let verify_data = sess.common.get_key_schedule().sign_finish(
-        SecretKind::ClientAuthenticatedHandshakeTrafficSecret,
+        false,
         &handshake_hash,
     );
     trace!("handshake_hash: {:?}", &handshake_hash);
@@ -2442,6 +2442,8 @@ fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImp
 
     assert!(check_aligned_handshake(sess).is_ok());
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
+    sess.common.get_mut_key_schedule().input_empty();
+
     let write_key = sess
         .common
         .get_key_schedule()
@@ -2521,7 +2523,7 @@ impl State for ExpectTLS13Finished {
 
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
         let expect_verify_data = sess.common.get_key_schedule().sign_finish(
-            SecretKind::ServerAuthenticatedHandshakeTrafficSecret,
+            true,
             &handshake_hash,
         );
 
@@ -2549,7 +2551,6 @@ impl State for ExpectTLS13Finished {
         // };
 
         /* Transition to application data */
-        sess.common.get_mut_key_schedule().input_empty();
 
         /* Traffic from server is now decrypted with application data keys. */
         let handshake_hash = sess.common.hs_transcript.get_current_hash();

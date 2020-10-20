@@ -2020,7 +2020,7 @@ impl ExpectTLS13Finished {
     fn emit_finished_tls13(&mut self, sess: &mut ServerSessionImpl) {
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
         let verify_data = sess.common.get_key_schedule().sign_finish(
-            SecretKind::ServerAuthenticatedHandshakeTrafficSecret,
+            true,
             &handshake_hash,
         );
         let verify_data_payload = Payload::new(verify_data);
@@ -2039,7 +2039,6 @@ impl ExpectTLS13Finished {
         sess.common.send_msg(m, true);
 
         // Now move to application data keys.
-        sess.common.get_mut_key_schedule().input_empty();
         let write_key = sess.common.get_key_schedule().derive(
             SecretKind::ServerApplicationTrafficSecret,
             &self.handshake.hash_at_server_fin,
@@ -2091,14 +2090,12 @@ impl State for ExpectTLS13Finished {
         trace!("finished");
         let finished = extract_handshake!(m, HandshakePayload::Finished).unwrap();
 
+        // Compute MS
+        sess.common.get_mut_key_schedule().input_empty();
+
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
-        debug!("handshake_hash that's in Finished: {:?}", handshake_hash);
-        debug!(
-            "Current client traffic secret: {:?}",
-            sess.common.get_key_schedule().current_client_traffic_secret
-        );
         let expect_verify_data = sess.common.get_key_schedule().sign_finish(
-            SecretKind::ClientAuthenticatedHandshakeTrafficSecret,
+            false,
             &handshake_hash,
         );
 

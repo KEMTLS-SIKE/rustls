@@ -42,7 +42,7 @@ impl SecretKind {
 /// the type of hash, plus the two current traffic keys which form their
 /// own lineage of keys over successive key updates.
 pub struct KeySchedule {
-    current: hmac::SigningKey,
+    pub current: hmac::SigningKey,
     need_derive_for_extract: bool,
     hash: &'static digest::Algorithm,
     hash_of_empty_message: [u8; digest::MAX_OUTPUT_LEN],
@@ -94,14 +94,6 @@ impl KeySchedule {
         self.current = new
     }
 
-    /// PQTLS bind handshake to hash of transcript by deriving with non-empty hash.
-    pub fn derive_with_hash(&mut self, hash: &[u8]) {
-        trace!("Inputting transcript hash for dAHS");
-        self.need_derive_for_extract = false;
-        let derived = self.derive(SecretKind::DerivedSecret, hash);
-        self.current = hmac::SigningKey::new(self.hash, &derived);
-    }
-
     /// Derive a secret of given `kind`, using current handshake hash `hs_hash`.
     pub fn derive(&self, kind: SecretKind, hs_hash: &[u8]) -> Vec<u8> {
         debug_assert_eq!(hs_hash.len(), self.hash.output_len);
@@ -130,19 +122,19 @@ impl KeySchedule {
 
     /// Sign the finished message consisting of `hs_hash` using the current
     /// traffic secret.
-    pub fn sign_finish(&self, kind: SecretKind, hs_hash: &[u8]) -> Vec<u8> {
-        let base_key = self.current_traffic_secret(kind);
-        self.sign_verify_data(base_key, hs_hash)
+    pub fn sign_finish(&self, is_server: bool, hs_hash: &[u8]) -> Vec<u8> {
+        let base_key = &self.current;
+        self.sign_verify_data(base_key, is_server, hs_hash)
     }
 
     /// Sign the finished message consisting of `hs_hash` using the key material
     /// `base_key`.
-    pub fn sign_verify_data(&self, base_key: &[u8], hs_hash: &[u8]) -> Vec<u8> {
+    pub fn sign_verify_data(&self, base_key: &hmac::SigningKey, is_server: bool, hs_hash: &[u8]) -> Vec<u8> {
         debug_assert_eq!(hs_hash.len(), self.hash.output_len);
 
         let hmac_key = _hkdf_expand_label_vec(
-            &hmac::SigningKey::new(self.hash, base_key),
-            b"finished",
+            base_key,
+            if is_server { b"s finished" } else { b"c finished"},
             &[],
             self.hash.output_len,
         );
