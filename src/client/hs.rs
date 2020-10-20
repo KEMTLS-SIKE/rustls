@@ -2416,6 +2416,10 @@ fn emit_certverify_tls13(
 }
 
 fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImpl) {
+
+    // compute MS
+    sess.common.get_mut_key_schedule().input_empty();
+
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
     debug!(
         "Current client traffic secret: {:?}",
@@ -2443,7 +2447,6 @@ fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImp
 
     assert!(check_aligned_handshake(sess).is_ok());
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
-    sess.common.get_mut_key_schedule().input_empty();
 
     let write_key = sess
         .common
