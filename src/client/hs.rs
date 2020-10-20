@@ -1303,6 +1303,14 @@ impl ExpectTLS13Certificate {
         })
     }
 
+    fn into_expect_kemtls_skex(self, certv: verify::ServerCertVerified) -> NextState {
+        Box::new(ExpectKEMTLSServerKemCiphertext {
+            handshake: self.handshake,
+            client_auth: self.client_auth,
+            cert_verified: certv,
+        })
+    }
+
     fn emit_clientkx(&self, session: &mut ClientSessionImpl) {
         let cert = &self.server_cert.cert_chain[0];
         let cert_in = untrusted::Input::from(&cert.0);
@@ -1440,9 +1448,70 @@ impl State for ExpectTLS13Certificate {
             .map_err(|err| send_cert_error_alert(sess, err))?;
 
         self.emit_clientkx(sess);
-        emit_finished_tls13(&self.handshake, sess);
+        if self.client_auth.is_some() {
+            let mut cauth = self.client_auth.take().unwrap();
+            emit_certificate_tls13(&mut cauth, sess);
+            self.client_auth = Some(cauth);
+            // derives MS from ss_C
+            Ok(self.into_expect_kemtls_skex(certv))
+        } else {
+            // derive MS here
+            sess.common.get_mut_key_schedule().input_empty();
 
-        Ok(self.into_expect_tls13_finished(certv))
+            emit_finished_tls13(&self.handshake, sess);
+            Ok(self.into_expect_tls13_finished(certv))
+        }
+    }
+}
+
+struct ExpectKEMTLSServerKemCiphertext {
+    handshake: HandshakeDetails,
+    client_auth: Option<ClientAuthDetails>,
+    cert_verified: verify::ServerCertVerified,
+}
+
+impl ExpectKEMTLSServerKemCiphertext {
+    fn into_expect_tls13_finished(self) -> NextState {
+        Box::new(ExpectTLS13Finished {
+            cert_verified: self.cert_verified,
+            handshake: self.handshake,
+            client_auth: self.client_auth,
+            sig_verified: verify::HandshakeSignatureValid::assertion(),
+        })
+    }
+}
+
+impl State for ExpectKEMTLSServerKemCiphertext {
+    fn check_message(&self, m: &Message) -> Result<(), TLSError> {
+        check_handshake_message(m, &[HandshakeType::ServerKeyExchange])
+    }
+    fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
+        let skex = extract_handshake!(m, HandshakePayload::ServerKeyExchange).unwrap();
+        sess.common.hs_transcript.add_message(&m);
+
+        let ct = match skex {
+            &ServerKeyExchangePayload::Unknown(ref ct) => &ct.0,
+            _ => unreachable!(),
+        };
+
+        let client_auth = self.client_auth.take().unwrap();
+
+        let key = client_auth.key.as_ref().unwrap().get_key();
+        let private_key = untrusted::Input::from(key);
+        let cert_bytes = client_auth.cert.as_ref().unwrap();
+        let cert_in = untrusted::Input::from(&cert_bytes[0].0);
+        let cert = webpki::EndEntityCert::from(cert_in).map_err(TLSError::WebPKIError)?;
+        let key = &cert
+            .decapsulate(private_key, untrusted::Input::from(&ct))
+            .map_err(|e| {
+                debug!("{:#?}", e);
+                TLSError::General("didn't work to decapsulate from SKEX".to_owned())
+            })?;
+        println!("DECAPSULATED SKEX: {} ns", self.handshake.start_time.elapsed().as_nanos());
+
+        sess.common.get_mut_key_schedule().input_secret(&key);
+
+        Ok(self.into_expect_tls13_finished())
     }
 }
 
@@ -2003,6 +2072,7 @@ impl State for ExpectTLS13CertificateRequest {
             client_auth.cert = Some(certkey.take_cert());
             client_auth.signer = maybe_signer;
             client_auth.auth_context = Some(certreq.context.0.clone());
+            client_auth.key = Some(certkey.key);
         } else {
             debug!("Client auth requested but no cert selected");
         }
@@ -2354,7 +2424,6 @@ fn save_session(
     }
 }
 
-#[allow(unused)]
 fn emit_certificate_tls13(client_auth: &mut ClientAuthDetails, sess: &mut ClientSessionImpl) {
     let context = client_auth.auth_context.take().unwrap_or_else(Vec::new);
 
@@ -2363,7 +2432,7 @@ fn emit_certificate_tls13(client_auth: &mut ClientAuthDetails, sess: &mut Client
         list: Vec::new(),
     };
 
-    if let Some(cert_chain) = client_auth.cert.take() {
+    if let Some(cert_chain) = client_auth.cert.clone().take() {
         for cert in cert_chain {
             cert_payload.list.push(CertificateEntry::new(cert));
         }
@@ -2395,7 +2464,6 @@ fn emit_certverify_tls13(
     message.resize(64, 0x20u8);
     message.extend_from_slice(b"TLS 1.3, client CertificateVerify\x00");
     message.extend_from_slice(&sess.common.hs_transcript.get_current_hash());
-
     let signer = client_auth.signer.take().unwrap();
     let scheme = signer.get_scheme();
     let sig = signer.sign(&message)?;
@@ -2416,10 +2484,6 @@ fn emit_certverify_tls13(
 }
 
 fn emit_finished_tls13(handshake: &HandshakeDetails, sess: &mut ClientSessionImpl) {
-
-    // compute MS
-    sess.common.get_mut_key_schedule().input_empty();
-
     let handshake_hash = sess.common.hs_transcript.get_current_hash();
     debug!(
         "Current client traffic secret: {:?}",

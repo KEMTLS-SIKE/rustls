@@ -162,6 +162,7 @@ impl ReceivedTicketDetails {
 pub struct ClientAuthDetails {
     pub cert: Option<CertificatePayload>,
     pub signer: Option<Box<dyn sign::Signer>>,
+    pub key: Option<std::sync::Arc<Box<dyn sign::SigningKey>>>,
     pub auth_context: Option<Vec<u8>>,
 }
 
@@ -171,6 +172,7 @@ impl ClientAuthDetails {
             cert: None,
             signer: None,
             auth_context: None,
+            key: None,
         }
     }
 }
