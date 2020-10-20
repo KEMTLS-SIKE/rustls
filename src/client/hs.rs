@@ -154,6 +154,7 @@ fn randomise_sessionid_for_ticket(csv: &mut persist::ClientSessionValue) {
 
 /// This implements the horrifying TLS1.3 hack where PSK binders have a
 /// data dependency on the message they are contained within.
+#[allow(unused)]
 pub fn fill_in_psk_binder(
     sess: &mut ClientSessionImpl,
     handshake: &mut HandshakeDetails,
@@ -183,10 +184,10 @@ pub fn fill_in_psk_binder(
     let mut key_schedule = KeySchedule::new(suite_hash);
     key_schedule.input_secret(&resuming.master_secret.0);
     let base_key = key_schedule.derive(SecretKind::ResumptionPSKBinderKey, &empty_hash);
-    let real_binder = key_schedule.sign_verify_data(&base_key, &handshake_hash);
+    //let real_binder = key_schedule.sign_verify_data(&base_key, false, &handshake_hash);
 
     if let HandshakePayload::ClientHello(ref mut ch) = hmp.payload {
-        ch.set_psk_binder(real_binder);
+      //  ch.set_psk_binder(real_binder);
     };
     sess.common.set_key_schedule(key_schedule);
 }

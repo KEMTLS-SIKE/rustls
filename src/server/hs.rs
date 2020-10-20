@@ -332,6 +332,7 @@ impl ExpectClientHello {
         Ok(ret)
     }
 
+    #[allow(unused)]
     fn check_binder(
         &self,
         sess: &mut ServerSessionImpl,
@@ -356,9 +357,10 @@ impl ExpectClientHello {
             SecretKind::ResumptionPSKBinderKey,
             key_schedule.get_hash_of_empty_message(),
         );
-        let real_binder = key_schedule.sign_verify_data(&base_key, &handshake_hash);
+        //let real_binder = key_schedule.sign_verify_data(&base_key, &handshake_hash);
 
-        constant_time::verify_slices_are_equal(&real_binder, binder).is_ok()
+        //constant_time::verify_slices_are_equal(&real_binder, binder).is_ok()
+        false
     }
 
     fn emit_server_hello_tls13(
