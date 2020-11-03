@@ -206,10 +206,11 @@ impl ExpectClientHello {
         })
     }
 
-    fn into_expect_kemtls_client_kx(self, server_key: sign::CertifiedKey) -> NextState {
+    fn into_expect_kemtls_client_kx(self, server_key: sign::CertifiedKey, doing_client_auth: bool) -> NextState {
         Box::new(ExpectKEMTLSClientKX {
             handshake: self.handshake,
             server_key,
+            doing_client_auth,
         })
     }
 
@@ -1048,7 +1049,7 @@ impl ExpectClientHello {
         }
         self.emit_encrypted_extensions(sess, &mut server_key, client_hello, resumedata.as_ref())?;
 
-        let _doing_client_auth = if full_handshake {
+        let doing_client_auth = if full_handshake {
             let client_auth = self.emit_certificate_req_tls13(sess);
             self.emit_certificate_tls13(sess, &mut server_key);
             //self.emit_certificate_verify_tls13(sess, &mut server_key, their_keyshare, &sigschemes_ext)?;
@@ -1059,7 +1060,7 @@ impl ExpectClientHello {
 
         check_aligned_handshake(sess)?;
         if full_handshake {
-            Ok(self.into_expect_kemtls_client_kx(server_key))
+            Ok(self.into_expect_kemtls_client_kx(server_key, doing_client_auth))
         } else {
             Ok(self._into_expect_tls13_finished())
         }
@@ -1448,6 +1449,7 @@ impl State for ExpectTLS13Certificate {
             if !sess.config.verifier.client_auth_mandatory() {
                 debug!("client auth requested but no certificate supplied");
                 sess.common.hs_transcript.abandon_client_auth();
+                sess.common.get_mut_key_schedule().input_empty(); // compute MS here
                 return Ok(self.into_expect_tls13_finished());
             }
 
@@ -1465,7 +1467,28 @@ impl State for ExpectTLS13Certificate {
             })?;
 
         let cert = ClientCertDetails::new(cert_chain);
-        Ok(self.into_expect_tls13_certificate_verify(cert))
+        let ccert_in = untrusted::Input::from(&cert.cert_chain[0].0);
+        let ccert = webpki::EndEntityCert::from(ccert_in).unwrap();
+        println!("ECAPSULATING TO CLIENT: {} ns", self.handshake.runtime());
+        let (ciphertext, shared_secret) = ccert.encapsulate().unwrap();
+        let skx = Message {
+            typ: ContentType::Handshake,
+            version: ProtocolVersion::TLSv1_3,
+            payload: MessagePayload::Handshake(HandshakeMessagePayload {
+                typ: HandshakeType::ClientKeyExchange,
+                payload: HandshakePayload::ClientKeyExchange(Payload::new(
+                    ciphertext.as_ref().to_vec(),
+                )),
+            }),
+        };
+        sess.common.hs_transcript.add_message(&skx);
+        sess.common.send_msg(skx, true);
+        println!("SUBMITTED SKEX TO CLIENT: {} ns", self.handshake.runtime());
+
+        // Compute MS
+        sess.common.get_mut_key_schedule().input_secret(&shared_secret);
+
+        Ok(self.into_expect_tls13_finished())
     }
 }
 
@@ -1473,11 +1496,19 @@ impl State for ExpectTLS13Certificate {
 pub struct ExpectKEMTLSClientKX {
     handshake: HandshakeDetails,
     server_key: sign::CertifiedKey,
+    doing_client_auth: bool,
 }
 
 impl ExpectKEMTLSClientKX {
     fn into_expect_tls13_finished(self) -> NextState {
         Box::new(ExpectTLS13Finished {
+            handshake: self.handshake,
+            send_ticket: false,
+        })
+    }
+
+    fn into_expect_tls13_certificate(self) -> NextState {
+        Box::new(ExpectTLS13Certificate {
             handshake: self.handshake,
             send_ticket: false,
         })
@@ -1547,7 +1578,12 @@ impl State for ExpectKEMTLSClientKX {
         key_schedule.current_server_traffic_secret = write_key;
         println!("SWITCHED TO AHS KEYS: {} ns", self.handshake.runtime());
 
-        Ok(self.into_expect_tls13_finished())
+        if self.doing_client_auth {
+            Ok(self.into_expect_tls13_certificate()) // computes MS after encapsulating
+        } else {
+            sess.common.get_mut_key_schedule().input_empty(); // compute MS
+            Ok(self.into_expect_tls13_finished())
+        }
     }
 }
 
@@ -2091,9 +2127,6 @@ impl State for ExpectTLS13Finished {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError {
         trace!("finished");
         let finished = extract_handshake!(m, HandshakePayload::Finished).unwrap();
-
-        // Compute MS
-        sess.common.get_mut_key_schedule().input_empty();
 
         let handshake_hash = sess.common.hs_transcript.get_current_hash();
         let expect_verify_data = sess.common.get_key_schedule().sign_finish(
