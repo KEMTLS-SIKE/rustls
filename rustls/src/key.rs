@@ -1,4 +1,5 @@
 use std::fmt;
+use ring::digest;
 
 /// This type contains a private key by value.
 ///
@@ -21,6 +22,12 @@ pub struct Certificate(pub Vec<u8>);
 impl AsRef<[u8]> for Certificate {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl Certificate {
+    pub(crate) fn hash(&self) -> Vec<u8> {
+        digest::digest(&digest::SHA256, &self.0).as_ref().to_vec()
     }
 }
 

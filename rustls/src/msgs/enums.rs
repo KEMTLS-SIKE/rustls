@@ -240,7 +240,8 @@ enum_builder! {
         NextProtocolNegotiation => 0x3374,
         ChannelId => 0x754f,
         RenegotiationInfo => 0xff01,
-        TransportParameters => 0xffa5
+        TransportParameters => 0xffa5,
+        CachedInformation => 0x0019
     }
 }
 
@@ -796,5 +797,15 @@ enum_builder! {
     EnumName: CertificateStatusType;
     EnumVal{
         OCSP => 0x01
+    }
+}
+
+enum_builder! {
+    /// https://tools.ietf.org/html/rfc7924#section-3
+    @U8
+    EnumName: CachedInformationType;
+    EnumVal{
+        Cert => 0x01,
+        CertReq => 0x02
     }
 }

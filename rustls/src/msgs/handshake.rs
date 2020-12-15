@@ -2,7 +2,7 @@ use crate::msgs::enums::{ProtocolVersion, HandshakeType};
 use crate::msgs::enums::{CipherSuite, Compression, ExtensionType, ECPointFormat};
 use crate::msgs::enums::{HashAlgorithm, SignatureAlgorithm, ServerNameType};
 use crate::msgs::enums::{SignatureScheme, KeyUpdateRequest, NamedGroup};
-use crate::msgs::enums::{ClientCertificateType, CertificateStatusType};
+use crate::msgs::enums::{ClientCertificateType, CertificateStatusType, CachedInformationType};
 use crate::msgs::enums::ECCurveType;
 use crate::msgs::enums::PSKKeyExchangeMode;
 use crate::msgs::base::{Payload, PayloadU8, PayloadU16, PayloadU24};
@@ -555,6 +555,29 @@ pub type SCTList = VecU16OfPayloadU16;
 declare_u8_vec!(PSKKeyExchangeModes, PSKKeyExchangeMode);
 declare_u16_vec!(KeyShareEntries, KeyShareEntry);
 declare_u8_vec!(ProtocolVersions, ProtocolVersion);
+/// https://tools.ietf.org/html/rfc7924#section-3
+#[derive(Clone, Debug)]
+pub struct CachedObject {
+    pub typ: CachedInformationType,
+    pub hash_value: PayloadU8,
+}
+
+impl Codec for CachedObject {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.typ.encode(bytes);
+        self.hash_value.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Option<Self> {
+        let typ = CachedInformationType::read(r)?;
+        let hash_value = PayloadU8::read(r)?;
+
+        Some(CachedObject {typ, hash_value})
+    }
+}
+
+declare_u16_vec!(CachedInfo, CachedObject);
+declare_u16_vec!(CachedInfoTypes, CachedInformationType);
 
 #[derive(Clone, Debug)]
 pub enum ClientExtension {
@@ -576,6 +599,7 @@ pub enum ClientExtension {
     TransportParameters(Vec<u8>),
     EarlyData,
     Unknown(UnknownExtension),
+    CachedInformation(CachedInfo),
 }
 
 impl ClientExtension {
@@ -599,6 +623,7 @@ impl ClientExtension {
             ClientExtension::TransportParameters(_) => ExtensionType::TransportParameters,
             ClientExtension::EarlyData => ExtensionType::EarlyData,
             ClientExtension::Unknown(ref r) => r.typ,
+            ClientExtension::CachedInformation(_) => ExtensionType::CachedInformation,
         }
     }
 }
@@ -627,6 +652,7 @@ impl Codec for ClientExtension {
             ClientExtension::CertificateStatusRequest(ref r) => r.encode(&mut sub),
             ClientExtension::TransportParameters(ref r) => sub.extend_from_slice(r),
             ClientExtension::Unknown(ref r) => r.encode(&mut sub),
+            ClientExtension::CachedInformation(ref obj) => obj.encode(&mut sub),
         }
 
         (sub.len() as u16).encode(bytes);
@@ -691,7 +717,8 @@ impl Codec for ClientExtension {
             }
             ExtensionType::EarlyData if !sub.any_left() => {
                 ClientExtension::EarlyData
-            }
+            },
+            ExtensionType::CachedInformation => ClientExtension::CachedInformation(CachedInfo::read(&mut sub)?),
             _ => ClientExtension::Unknown(UnknownExtension::read(typ, &mut sub)?),
         })
     }
@@ -723,6 +750,18 @@ impl ClientExtension {
 
         ClientExtension::ServerName(vec![ name ])
     }
+
+    /// Mark a cached certificate
+    /// see https://tools.ietf.org/html/rfc7924#section-3
+    pub fn make_cached_certs(certs: &[key::Certificate]) -> ClientExtension {
+        let mut objs = Vec::with_capacity(certs.len());
+        for hash_value in certs.iter().map(|crt| crt.hash()) {
+            let typ = CachedInformationType::Cert;
+            let hash_value = PayloadU8::new(hash_value);
+            objs.push(CachedObject { typ, hash_value })
+        }
+        ClientExtension::CachedInformation(objs)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -740,6 +779,7 @@ pub enum ServerExtension {
     SupportedVersions(ProtocolVersion),
     TransportParameters(Vec<u8>),
     EarlyData,
+    CachedInformation(CachedInfoTypes),
     Unknown(UnknownExtension),
 }
 
@@ -760,6 +800,7 @@ impl ServerExtension {
             ServerExtension::TransportParameters(_) => ExtensionType::TransportParameters,
             ServerExtension::EarlyData => ExtensionType::EarlyData,
             ServerExtension::Unknown(ref r) => r.typ,
+            ServerExtension::CachedInformation(_) => ExtensionType::CachedInformation,
         }
     }
 }
@@ -783,6 +824,7 @@ impl Codec for ServerExtension {
             ServerExtension::SignedCertificateTimestamp(ref r) => r.encode(&mut sub),
             ServerExtension::SupportedVersions(ref r) => r.encode(&mut sub),
             ServerExtension::TransportParameters(ref r) => sub.extend_from_slice(r),
+            ServerExtension::CachedInformation(ref r) => r.encode(&mut sub),
             ServerExtension::Unknown(ref r) => r.encode(&mut sub),
         }
 
@@ -824,7 +866,8 @@ impl Codec for ServerExtension {
             }
             ExtensionType::TransportParameters => {
                 ServerExtension::TransportParameters(sub.rest().to_vec())
-            }
+            },
+            ExtensionType::CachedInformation => ServerExtension::CachedInformation(CachedInfoTypes::read(&mut sub)?),
             ExtensionType::EarlyData => ServerExtension::EarlyData,
             _ => ServerExtension::Unknown(UnknownExtension::read(typ, &mut sub)?),
         })
@@ -1044,6 +1087,18 @@ impl ClientHelloPayload {
 
     pub fn early_data_extension_offered(&self) -> bool {
         self.find_extension(ExtensionType::EarlyData).is_some()
+    }
+
+    pub fn cached_information(&self) -> Option<&Vec<CachedObject>> {
+        self.find_extension(ExtensionType::CachedInformation)
+            .and_then(|ext| {
+                match ext {
+                    ClientExtension::CachedInformation(ref obj) => {
+                        Some(obj)
+                    },
+                    _ => None,
+                }
+            })
     }
 }
 
@@ -1312,7 +1367,7 @@ impl Codec for CertificatePayload {
 // That's annoying. It means the parsing is not
 // context-free any more.
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CertificateExtension {
     CertificateStatus(CertificateStatus),
     SignedCertificateTimestamp(SCTList),
@@ -1385,7 +1440,7 @@ impl Codec for CertificateExtension {
 
 declare_u16_vec!(CertificateExtensions, CertificateExtension);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CertificateEntry {
     pub cert: key::Certificate,
     pub exts: CertificateExtensions,
@@ -1452,7 +1507,7 @@ impl CertificateEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CertificatePayloadTLS13 {
     pub context: PayloadU8,
     pub entries: Vec<CertificateEntry>,
@@ -1529,6 +1584,15 @@ impl CertificatePayloadTLS13 {
             ret.push(entry.cert.clone());
         }
         ret
+    }
+
+    pub fn replace_cached_entries(&mut self, cached_certs: &[key::Certificate]) {
+        let cached_certificate_hashes = cached_certs.iter().map(|crt| crt.hash()).collect::<Vec<_>>();
+        for entry in self.entries.iter_mut() {
+            if let Some(pos) = cached_certificate_hashes.iter().position(|x| x == &entry.cert.0) {
+                entry.cert = cached_certs[pos].clone();
+            }
+        }
     }
 }
 
@@ -2073,7 +2137,7 @@ impl Codec for NewSessionTicketPayloadTLS13 {
 // -- RFC6066 certificate status types
 
 /// Only supports OCSP
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CertificateStatus {
     pub ocsp_response: PayloadU24
 }

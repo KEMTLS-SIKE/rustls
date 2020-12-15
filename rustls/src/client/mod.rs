@@ -136,6 +136,9 @@ pub struct ClientConfig {
     ///
     /// The default is false.
     pub enable_early_data: bool,
+
+    /// RFC 7924
+    pub known_certificates: Vec<key::Certificate>,
 }
 
 impl Default for ClientConfig {
@@ -172,6 +175,7 @@ impl ClientConfig {
             verifier: Arc::new(verify::WebPKIVerifier::new()),
             key_log: Arc::new(NoKeyLog {}),
             enable_early_data: false,
+            known_certificates: Vec::new(),
         }
     }
 

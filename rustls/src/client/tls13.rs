@@ -516,6 +516,8 @@ impl hs::State for ExpectCertificate {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> hs::NextStateOrError {
         let cert_chain = require_handshake_msg!(m, HandshakeType::Certificate, HandshakePayload::CertificateTLS13)?;
         self.handshake.transcript.add_message(&m);
+        let mut cert_chain = cert_chain.clone();
+        cert_chain.replace_cached_entries(&sess.config.known_certificates);
 
         // This is only non-empty for client auth.
         if !cert_chain.context.0.is_empty() {

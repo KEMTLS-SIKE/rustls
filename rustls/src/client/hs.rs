@@ -211,6 +211,10 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     exts.push(ClientExtension::ExtendedMasterSecretRequest);
     exts.push(ClientExtension::CertificateStatusRequest(CertificateStatusRequest::build_ocsp()));
 
+    if !sess.config.known_certificates.is_empty() {
+        exts.push(ClientExtension::make_cached_certs(&sess.config.known_certificates));
+    }
+
     if sess.config.ct_logs.is_some() {
         exts.push(ClientExtension::SignedCertificateTimestampRequest);
     }

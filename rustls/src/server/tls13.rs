@@ -1,4 +1,4 @@
-use crate::{key_schedule::{KeyScheduleComputesClientFinish, KeyScheduleComputesServerFinish, KeyScheduleTrafficWithServerFinishedPending}, msgs::enums::{ContentType, HandshakeType, ProtocolVersion}};
+use crate::{Certificate, key_schedule::{KeyScheduleComputesClientFinish, KeyScheduleComputesServerFinish, KeyScheduleTrafficWithServerFinishedPending}, msgs::enums::{ContentType, HandshakeType, ProtocolVersion}};
 use crate::msgs::enums::{AlertDescription, SignatureScheme, NamedGroup};
 use crate::msgs::enums::{Compression, PSKKeyExchangeMode};
 use crate::msgs::enums::KeyUpdateRequest;
@@ -331,6 +331,12 @@ impl CompleteClientHelloHandling {
                               server_key: &mut sign::CertifiedKey) {
         let mut cert_entries = vec![];
         for cert in server_key.cert.clone() {
+            let hash = vec![];
+            let cert = if sess.cached_certificate_hashes.contains(&hash) {
+                Certificate(hash)
+            } else {
+                cert
+            };
             let entry = CertificateEntry {
                 cert,
                 exts: Vec::new(),

@@ -327,6 +327,8 @@ pub struct ServerSessionImpl {
     pub client_cert_chain: Option<Vec<key::Certificate>>,
     /// Whether to reject early data even if it would otherwise be accepted
     pub reject_early_data: bool,
+    /// RFC 7924
+    cached_certificate_hashes: Vec<Vec<u8>>,
 }
 
 impl fmt::Debug for ServerSessionImpl {
@@ -350,6 +352,7 @@ impl ServerSessionImpl {
             state: Some(Box::new(hs::ExpectClientHello::new(server_config, extra_exts))),
             client_cert_chain: None,
             reject_early_data: false,
+            cached_certificate_hashes: Vec::new(),
         }
     }
 

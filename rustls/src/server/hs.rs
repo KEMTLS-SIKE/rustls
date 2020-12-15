@@ -1,7 +1,8 @@
-use crate::msgs::enums::{ContentType, HandshakeType, ProtocolVersion};
+use crate::msgs::{enums::{ContentType, HandshakeType, ProtocolVersion}, handshake::CachedObject};
 use crate::msgs::enums::{Compression, NamedGroup, ECPointFormat, CipherSuite};
 use crate::msgs::enums::{ExtensionType, AlertDescription};
 use crate::msgs::enums::{ClientCertificateType, SignatureScheme};
+use crate::msgs::enums::CachedInformationType;
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::handshake::{HandshakePayload, SupportedSignatureSchemes};
 use crate::msgs::handshake::{HandshakeMessagePayload, ServerHelloPayload, Random};
@@ -228,6 +229,23 @@ impl ExtensionProcessing {
                         .take_sct_list()
                         .unwrap();
                     self.exts.push(ServerExtension::make_sct(sct_list));
+                }
+            }
+
+            if let Some(cached_info) = hello.cached_information() {
+                let cert_hashes = server_key.cert.iter().map(|crt| crt.hash()).collect::<Vec<Vec<u8>>>();
+                let mut has_cert_type = false;
+                for CachedObject { typ, hash_value} in cached_info {
+                    if *typ != CachedInformationType::Cert {
+                        continue;
+                    }
+                    has_cert_type = true;
+                    if cert_hashes.contains(&hash_value.0) {
+                        sess.cached_certificate_hashes.push(hash_value.0.to_vec());
+                    }
+                }
+                if has_cert_type {
+                    self.exts.push(ServerExtension::CachedInformation(vec![CachedInformationType::Cert]));
                 }
             }
         }
