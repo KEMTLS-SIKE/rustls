@@ -331,17 +331,19 @@ impl CompleteClientHelloHandling {
                               server_key: &mut sign::CertifiedKey) {
         let mut cert_entries = vec![];
         for cert in server_key.cert.clone() {
-            let hash = vec![];
+            let hash = cert.hash();
             let cert = if sess.cached_certificate_hashes.contains(&hash) {
+                log::trace!("Using certificate hash instead of certificate!");
                 Certificate(hash)
             } else {
+                log::trace!("sending full certificate");
                 cert
             };
             let entry = CertificateEntry {
                 cert,
                 exts: Vec::new(),
             };
-
+            
             cert_entries.push(entry);
         }
 

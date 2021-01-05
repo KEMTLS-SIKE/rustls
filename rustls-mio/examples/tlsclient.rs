@@ -301,27 +301,27 @@ Usage:
   tlsclient (--help | -h)
 
 Options:
-    -p, --port PORT      Connect to PORT [default: 443].
-    --http               Send a basic HTTP GET request for /.
-    --cafile CAFILE      Read root certificates from CAFILE.
-    --auth-key KEY       Read client authentication key from KEY.
-    --auth-certs CERTS   Read client authentication certificates from CERTS.
-                         CERTS must match up with KEY.
-    --cached-certs CERTS Read known server certificates from CERTS
-    --protover VERSION   Disable default TLS version list, and use
-                         VERSION instead.  May be used multiple times.
-    --suite SUITE        Disable default cipher suite list, and use
-                         SUITE instead.  May be used multiple times.
-    --proto PROTOCOL     Send ALPN extension containing PROTOCOL.
-                         May be used multiple times to offer several protocols.
-    --cache CACHE        Save session cache to file CACHE.
-    --no-tickets         Disable session ticket support.
-    --no-sni             Disable server name indication support.
-    --insecure           Disable certificate verification.
-    --verbose            Emit log output.
-    --mtu MTU            Limit outgoing messages to MTU bytes.
-    --version, -v        Show tool version.
-    --help, -h           Show this screen.
+    -p, --port PORT       Connect to PORT [default: 443].
+    --http                Send a basic HTTP GET request for /.
+    --cafile CAFILE       Read root certificates from CAFILE.
+    --auth-key KEY        Read client authentication key from KEY.
+    --auth-certs CERTS    Read client authentication certificates from CERTS.
+                          CERTS must match up with KEY.
+    --cached-certs CERTS  Read known server certificates from CERTS
+    --protover VERSION    Disable default TLS version list, and use
+                          VERSION instead.  May be used multiple times.
+    --suite SUITE         Disable default cipher suite list, and use
+                          SUITE instead.  May be used multiple times.
+    --proto PROTOCOL      Send ALPN extension containing PROTOCOL.
+                          May be used multiple times to offer several protocols.
+    --cache CACHE         Save session cache to file CACHE.
+    --no-tickets          Disable session ticket support.
+    --no-sni              Disable server name indication support.
+    --insecure            Disable certificate verification.
+    --verbose             Emit log output.
+    --mtu MTU             Limit outgoing messages to MTU bytes.
+    --version, -v         Show tool version.
+    --help, -h            Show this screen.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -478,7 +478,7 @@ fn make_config(args: &Args) -> Arc<rustls::ClientConfig> {
         config.versions = lookup_versions(&args.flag_protover);
     }
 
-    if !args.flag_cached_certs.is_some() {
+    if args.flag_cached_certs.is_some() {
         config.known_certificates = load_certs(&args.flag_cached_certs.as_ref().unwrap());
     }
 
