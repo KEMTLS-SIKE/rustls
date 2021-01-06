@@ -241,7 +241,8 @@ enum_builder! {
         ChannelId => 0x754f,
         RenegotiationInfo => 0xff01,
         TransportParameters => 0xffa5,
-        CachedInformation => 0x0019
+        CachedInformation => 0x0019,
+        ProactiveCiphertext => 0xfff1,
     }
 }
 

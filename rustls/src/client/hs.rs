@@ -1,4 +1,4 @@
-use crate::msgs::enums::{ContentType, HandshakeType, ExtensionType};
+use crate::{ALL_CIPHERSUITES, msgs::enums::{ContentType, HandshakeType, ExtensionType}};
 use crate::msgs::enums::{Compression, ProtocolVersion, AlertDescription};
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::base::Payload;
@@ -211,8 +211,13 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     exts.push(ClientExtension::ExtendedMasterSecretRequest);
     exts.push(ClientExtension::CertificateStatusRequest(CertificateStatusRequest::build_ocsp()));
 
+    let mut proactive_static_shared_secret = None;
     if !sess.config.known_certificates.is_empty() {
         exts.push(ClientExtension::make_cached_certs(&sess.config.known_certificates));
+        if let Some((ext, ss)) = ClientExtension::make_proactive_ciphertext(&sess.config.known_certificates, handshake.dns_name.as_ref()) {
+            exts.push(ext);
+            proactive_static_shared_secret = Some(ss);
+        }
     }
 
     if sess.config.ct_logs.is_some() {
@@ -282,6 +287,8 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
 
     let early_key_schedule = if fill_in_binder {
         Some(tls13::fill_in_psk_binder(sess, &mut handshake, &mut chp))
+    } else if let Some(ss) = proactive_static_shared_secret {
+        Some(KeyScheduleEarly::new(ALL_CIPHERSUITES[0].hkdf_algorithm, ss.as_ref()))
     } else {
         None
     };
@@ -381,12 +388,13 @@ pub fn sct_list_is_invalid(scts: &SCTList) -> bool {
 }
 
 impl ExpectServerHello {
-    fn into_expect_tls13_encrypted_extensions(self, key_schedule: KeyScheduleHandshake) -> NextState {
+    fn into_expect_tls13_encrypted_extensions(self, key_schedule: KeyScheduleHandshake, is_pdk: bool) -> NextState {
         Box::new(tls13::ExpectEncryptedExtensions {
             handshake: self.handshake,
             key_schedule,
             server_cert: self.server_cert,
             hello: self.hello,
+            is_pdk,
         })
     }
 
@@ -530,7 +538,8 @@ impl State for ExpectServerHello {
                                                               &mut self.handshake,
                                                               &mut self.hello)?;
             tls13::emit_fake_ccs(&mut self.handshake, sess);
-            return Ok(self.into_expect_tls13_encrypted_extensions(key_schedule));
+            let is_pdk = server_hello.find_extension(ExtensionType::ProactiveCiphertext).is_some();
+            return Ok(self.into_expect_tls13_encrypted_extensions(key_schedule, is_pdk));
         }
 
         // TLS1.2 only from here-on

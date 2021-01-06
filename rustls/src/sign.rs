@@ -412,8 +412,10 @@ impl PQSigningKey {
                 let alg_id = der::expect_tag_and_get_value(input, der::Tag::Sequence)
                     .map_err(|_| { panic!("getting oid failed") })?;
                 if alg_id.as_slice_less_safe() != expected_alg_id {
-                    crate::log::error!("Alg ID didn't match");
+                    crate::log::trace!("Alg ID didn't match for {:?}", scheme);
                     return Err(())
+                } else {
+                    crate::log::trace!("Did match for {:?}", scheme);
                 }
 
                 let private_key = der::expect_tag_and_get_value(input, der::Tag::OctetString)
@@ -491,8 +493,10 @@ impl PQKemKey {
                 let alg_id = der::expect_tag_and_get_value(input, der::Tag::Sequence)
                     .map_err(|_| { panic!("getting oid failed") })?;
                 if alg_id.as_slice_less_safe() != expected_alg_id {
-                    crate::log::debug!("Alg ID didn't match");
+                    crate::log::trace!("Alg ID didn't match for {:?}", scheme);
                     return Err(())
+                } else {
+                    crate::log::trace!("Did match for {:?}", scheme);
                 }
 
                 let private_key = der::expect_tag_and_get_value(input, der::Tag::OctetString)

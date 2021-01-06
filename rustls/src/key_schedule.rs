@@ -75,6 +75,10 @@ struct KeySchedule {
 /// KeySchedule that can compute a CFIN for us
 pub trait KeyScheduleComputesClientFinish {
     fn sign_client_finish(&self, hs_hash: &[u8]) -> Vec<u8>;
+
+    fn sign_client_finished_kemtlspdk(&self, _hs_hash: &[u8]) -> Vec<u8> {
+        panic!("Don't call this for this struct!");
+    }
 }
 
 /// KeySchedule that can compute a SFIN for us
@@ -257,6 +261,23 @@ impl KeyScheduleHandshake {
         }
     }
 
+    pub fn into_kemtlspdk_traffic_with_client_finished_pending(
+        mut self, client_shared_secret: Option<&[u8]>
+    ) -> KeyScheduleTrafficWithClientFinishedPending {
+        if let Some(ss) = client_shared_secret {
+            self.ks.input_secret(ss);
+        } else {
+            self.ks.input_empty();
+        }
+        KeyScheduleTrafficWithClientFinishedPending {
+            ks: self.ks,
+            handshake_client_traffic_secret: self.current_client_traffic_secret.unwrap(),
+            current_client_traffic_secret: None,
+            current_server_traffic_secret: None,
+            current_exporter_secret: None,
+        }
+    }
+
     pub fn into_traffic_with_server_finished_pending(
         mut self,
         client_shared_secret: Option<&[u8]>,
@@ -379,6 +400,10 @@ impl KeyScheduleComputesClientFinish for KeyScheduleTrafficWithClientFinishedPen
         self.ks
             .sign_finish(&self.handshake_client_traffic_secret, hs_hash)
     }
+
+    fn sign_client_finished_kemtlspdk(&self, hs_hash: &[u8]) -> Vec<u8> {
+        self.ks.sign_finish_kemtls(&self.ks.current, hs_hash, false)
+    }
 }
 
 impl KeyScheduleTrafficWithClientFinishedPending {
@@ -436,6 +461,10 @@ impl KeyScheduleTrafficWithClientFinishedPending {
             current_server_traffic_secret: self.current_server_traffic_secret.unwrap(),
             current_exporter_secret: self.current_exporter_secret.unwrap(),
         }
+    }
+
+    pub fn sign_server_finished_kemtlspdk(&self, hs_hash: &[u8]) -> Vec<u8> {
+        self.ks.sign_finish_kemtls(&self.ks.current, hs_hash, true)
     }
 }
 

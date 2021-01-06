@@ -580,6 +580,25 @@ declare_u16_vec!(CachedInfo, CachedObject);
 declare_u16_vec!(CachedInfoTypes, CachedInformationType);
 
 #[derive(Clone, Debug)]
+pub struct ProactiveCiphertextOffer {
+    pub certificate_hash: PayloadU8,
+    pub ciphertext: PayloadU16,
+}
+
+impl Codec for ProactiveCiphertextOffer {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.certificate_hash.encode(bytes);
+        self.ciphertext.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Option<Self> {
+        let certificate_hash = PayloadU8::read(r)?;
+        let ciphertext = PayloadU16::read(r)?;
+        Some(ProactiveCiphertextOffer { certificate_hash, ciphertext })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum ClientExtension {
     ECPointFormats(ECPointFormatList),
     NamedGroups(NamedGroups),
@@ -600,6 +619,7 @@ pub enum ClientExtension {
     EarlyData,
     Unknown(UnknownExtension),
     CachedInformation(CachedInfo),
+    ProactiveCiphertext(ProactiveCiphertextOffer),
 }
 
 impl ClientExtension {
@@ -622,8 +642,9 @@ impl ClientExtension {
             ClientExtension::SignedCertificateTimestampRequest => ExtensionType::SCT,
             ClientExtension::TransportParameters(_) => ExtensionType::TransportParameters,
             ClientExtension::EarlyData => ExtensionType::EarlyData,
-            ClientExtension::Unknown(ref r) => r.typ,
             ClientExtension::CachedInformation(_) => ExtensionType::CachedInformation,
+            ClientExtension::ProactiveCiphertext(_) => ExtensionType::ProactiveCiphertext,
+            ClientExtension::Unknown(ref r) => r.typ,
         }
     }
 }
@@ -653,6 +674,7 @@ impl Codec for ClientExtension {
             ClientExtension::TransportParameters(ref r) => sub.extend_from_slice(r),
             ClientExtension::Unknown(ref r) => r.encode(&mut sub),
             ClientExtension::CachedInformation(ref obj) => obj.encode(&mut sub),
+            ClientExtension::ProactiveCiphertext(ref r) => r.encode(&mut sub),
         }
 
         (sub.len() as u16).encode(bytes);
@@ -714,6 +736,9 @@ impl Codec for ClientExtension {
             }
             ExtensionType::TransportParameters => {
                 ClientExtension::TransportParameters(sub.rest().to_vec())
+            },
+            ExtensionType::ProactiveCiphertext => {
+                ClientExtension::ProactiveCiphertext(ProactiveCiphertextOffer::read(&mut sub)?)
             }
             ExtensionType::EarlyData if !sub.any_left() => {
                 ClientExtension::EarlyData
@@ -762,6 +787,28 @@ impl ClientExtension {
         }
         ClientExtension::CachedInformation(objs)
     }
+
+    // KEMTLS-PDK proactively encapsulate
+    // XXX this doesn't do proper validation of the certificate so anything in the cache is trusted
+    // Also this doesn't account for any of the settings of the client or server in regards to acceptable algorithms
+    pub fn make_proactive_ciphertext(certs: &[key::Certificate], hostname: webpki::DNSNameRef) -> Option<(ClientExtension, oqs::kem::SharedSecret)> {
+        for cert in certs.iter() {
+            let eecert = webpki::EndEntityCert::from(&cert.0);
+            if let Ok(eecert) = eecert {
+                if eecert.is_kem_cert() && eecert.verify_is_valid_for_dns_name(hostname).is_ok() {
+                    let (ct, ss) = eecert.encapsulate().ok()?;
+                    return Some(
+                        (ClientExtension::ProactiveCiphertext(
+                            ProactiveCiphertextOffer { 
+                                certificate_hash: PayloadU8::new(cert.hash()), 
+                                ciphertext: PayloadU16::new(ct.as_ref().to_vec()) 
+                            }
+                        ), ss));
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -779,6 +826,7 @@ pub enum ServerExtension {
     SupportedVersions(ProtocolVersion),
     TransportParameters(Vec<u8>),
     EarlyData,
+    ProactiveCiphertextAccepted(PayloadU8),
     CachedInformation(CachedInfoTypes),
     Unknown(UnknownExtension),
 }
@@ -801,6 +849,7 @@ impl ServerExtension {
             ServerExtension::EarlyData => ExtensionType::EarlyData,
             ServerExtension::Unknown(ref r) => r.typ,
             ServerExtension::CachedInformation(_) => ExtensionType::CachedInformation,
+            ServerExtension::ProactiveCiphertextAccepted(_) => ExtensionType::ProactiveCiphertext,
         }
     }
 }
@@ -825,6 +874,7 @@ impl Codec for ServerExtension {
             ServerExtension::SupportedVersions(ref r) => r.encode(&mut sub),
             ServerExtension::TransportParameters(ref r) => sub.extend_from_slice(r),
             ServerExtension::CachedInformation(ref r) => r.encode(&mut sub),
+            ServerExtension::ProactiveCiphertextAccepted(ref r) => r.encode(&mut sub),
             ServerExtension::Unknown(ref r) => r.encode(&mut sub),
         }
 
@@ -868,6 +918,7 @@ impl Codec for ServerExtension {
                 ServerExtension::TransportParameters(sub.rest().to_vec())
             },
             ExtensionType::CachedInformation => ServerExtension::CachedInformation(CachedInfoTypes::read(&mut sub)?),
+            ExtensionType::ProactiveCiphertext => ServerExtension::ProactiveCiphertextAccepted(PayloadU8::read(&mut sub)?),
             ExtensionType::EarlyData => ServerExtension::EarlyData,
             _ => ServerExtension::Unknown(UnknownExtension::read(typ, &mut sub)?),
         })
@@ -1094,6 +1145,18 @@ impl ClientHelloPayload {
             .and_then(|ext| {
                 match ext {
                     ClientExtension::CachedInformation(ref obj) => {
+                        Some(obj)
+                    },
+                    _ => None,
+                }
+            })
+    }
+
+    pub fn get_proactive_ciphertext(&self, cert: &key::Certificate) -> Option<&ProactiveCiphertextOffer> {
+        self.find_extension(ExtensionType::ProactiveCiphertext)
+            .and_then(|ext| {
+                match ext {
+                    ClientExtension::ProactiveCiphertext(ref obj) if obj.certificate_hash.0 == cert.hash() => {
                         Some(obj)
                     },
                     _ => None,
@@ -1345,6 +1408,14 @@ impl ServerHelloPayload {
         let ext = self.find_extension(ExtensionType::SupportedVersions)?;
         match *ext {
             ServerExtension::SupportedVersions(vers) => Some(vers),
+            _ => None,
+        }
+    }
+
+    pub fn get_accepted_ciphertext(&self) -> Option<&PayloadU8> {
+        let ext = self.find_extension(ExtensionType::ProactiveCiphertext)?;
+        match ext {
+            ServerExtension::ProactiveCiphertextAccepted(obj) => Some(obj),
             _ => None,
         }
     }

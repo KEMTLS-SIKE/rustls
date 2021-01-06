@@ -144,7 +144,8 @@ impl ExtensionProcessing {
                           server_key: Option<&mut sign::CertifiedKey>,
                           hello: &ClientHelloPayload,
                           resumedata: Option<&persist::ServerSessionValue>,
-                          handshake: &HandshakeDetails)
+                          handshake: &HandshakeDetails,
+                          doing_pdk: bool)
                           -> Result<(), TLSError> {
         // ALPN
         let our_protocols = &sess.config.alpn_protocols;
@@ -232,25 +233,25 @@ impl ExtensionProcessing {
                 }
             }
 
-            if let Some(cached_info) = hello.cached_information() {
-                let cert_hashes = server_key.cert.iter().map(|crt| crt.hash()).collect::<Vec<Vec<u8>>>();
-                let mut has_cert_type = false;
-                for CachedObject { typ, hash_value} in cached_info {
-                    if *typ != CachedInformationType::Cert {
-                        continue;
+            // don't send back this extension if we're doing KEMTLS-PDK
+            if !doing_pdk {
+                if let Some(cached_info) = hello.cached_information() {
+                    let cert_hashes = server_key.cert.iter().map(|crt| crt.hash()).collect::<Vec<Vec<u8>>>();
+                    let mut has_cert_type = false;
+                    for CachedObject { typ, hash_value} in cached_info {
+                        if *typ != CachedInformationType::Cert {
+                            continue;
+                        }
+                        has_cert_type = true;
+                        if cert_hashes.contains(&hash_value.0) {
+                            sess.cached_certificate_hashes.push(hash_value.0.to_vec());
+                        }
                     }
-                    has_cert_type = true;
-                    if cert_hashes.contains(&hash_value.0) {
-                        sess.cached_certificate_hashes.push(hash_value.0.to_vec());
+                    if has_cert_type {
+                        self.exts.push(ServerExtension::CachedInformation(vec![CachedInformationType::Cert]));
                     }
-                }
-                if has_cert_type {
-                    self.exts.push(ServerExtension::CachedInformation(vec![CachedInformationType::Cert]));
                 }
             }
-        }
-
-        if !sess.common.is_tls13() {
         }
 
         self.exts.extend(handshake.extra_exts.iter().cloned());
@@ -354,7 +355,7 @@ impl ExpectClientHello {
                          resumedata: Option<&persist::ServerSessionValue>)
                          -> Result<(), TLSError> {
         let mut ep = ExtensionProcessing::new();
-        ep.process_common(sess, server_key, hello, resumedata, &self.handshake)?;
+        ep.process_common(sess, server_key, hello, resumedata, &self.handshake, false)?;
         ep.process_tls12(sess, hello, &self.handshake);
 
         self.send_ticket = ep.send_ticket;
@@ -566,20 +567,20 @@ impl State for ExpectClientHello {
         let tls13_enabled = sess.config.supports_version(ProtocolVersion::TLSv1_3);
         let tls12_enabled = sess.config.supports_version(ProtocolVersion::TLSv1_2);
         trace!("we got a clienthello {:?}", client_hello);
-        
+
         if !client_hello.compression_methods.contains(&Compression::Null) {
             sess.common.send_fatal_alert(AlertDescription::IllegalParameter);
             return Err(TLSError::PeerIncompatibleError("client did not offer Null compression"
             .to_string()));
         }
-        
+
         if client_hello.has_duplicate_extension() {
             return Err(decode_error(sess, "client sent duplicate extensions"));
         }
-        
+
         // No handshake messages should follow this one in this flight.
         check_aligned_handshake(sess)?;
-        
+
         // Are we doing TLS1.3?
         let maybe_versions_ext = client_hello.get_versions_extension();
         if let Some(versions) = maybe_versions_ext {
@@ -593,13 +594,13 @@ impl State for ExpectClientHello {
         } else if !tls12_enabled && tls13_enabled {
             return Err(bad_version(sess, "Server requires TLS1.3, but client omitted versions ext"));
         }
-        
+
         if sess.common.negotiated_version == None {
             sess.common.negotiated_version = Some(ProtocolVersion::TLSv1_2);
         }
-        
+
         // --- Common to TLS1.2 and TLS1.3: ciphersuite and certificate selection.
-        
+
         // Extract and validate the SNI DNS name, if any, before giving it to
         // the cert resolver. In particular, if it is invalid then we should
         // send an Illegal Parameter alert instead of the Internal Error alert
@@ -610,7 +611,7 @@ impl State for ExpectClientHello {
                 if sni.has_duplicate_names_for_type() {
                     return Err(decode_error(sess, "ClientHello SNI contains duplicate name types"));
                 }
-                
+
                 if let Some(hostname) = sni.get_single_hostname() {
                     Some(hostname.into())
                 } else {
@@ -619,12 +620,12 @@ impl State for ExpectClientHello {
             },
             None => None,
         };
-        
+
         if !self.done_retry {
             // save only the first SNI
             save_sni(sess, sni.clone());
         }
-        
+
         // We communicate to the upper layer what kind of key they should choose
         // via the sigschemes value.  Clients tend to treat this extension
         // orthogonally to offered ciphersuites (even though, in TLS1.2 it is not).
@@ -632,36 +633,36 @@ impl State for ExpectClientHello {
         // intersection of ciphersuites.
         let mut common_suites = sess.config.ciphersuites.clone();
         common_suites.retain(|scs| client_hello.cipher_suites.contains(&scs.suite));
-        
+
         let mut sigschemes_ext = client_hello.get_sigalgs_extension()
         .cloned()
         .unwrap_or_else(SupportedSignatureSchemes::default);
         sigschemes_ext.retain(|scheme| suites::compatible_sigscheme_for_suites(*scheme, &common_suites));
-        
+
         let alpn_protocols = client_hello.get_alpn_extension()
         .map(|protos| protos.to_slices());
-        
+
         // Choose a certificate.
         let mut certkey = {
             let sni_ref = sni.as_ref().map(webpki::DNSName::as_ref);
             trace!("sni {:?}", sni_ref);
             trace!("sig schemes {:?}", sigschemes_ext);
             trace!("alpn protocols {:?}", alpn_protocols);
-            
+
             let alpn_slices = match alpn_protocols {
                 Some(ref vec) => Some(vec.as_slice()),
                 None => None,
             };
-            
+
             let client_hello = ClientHello::new(sni_ref, &sigschemes_ext, alpn_slices);
-            
+
             let certkey = sess.config.cert_resolver.resolve(client_hello);
             certkey.ok_or_else(|| {
                 sess.common.send_fatal_alert(AlertDescription::AccessDenied);
                 TLSError::General("no server certificate chain resolved".to_string())
             })?
         };
-        
+
         // Reduce our supported ciphersuites by the certificate.
         // (no-op for TLS1.3)
         let suitable_suites = suites::reduce_given_sigalg(&sess.config.ciphersuites,
@@ -670,20 +671,20 @@ impl State for ExpectClientHello {
         // And version
         let protocol_version = sess.common.negotiated_version.unwrap();
         let suitable_suites = suites::reduce_given_version(&suitable_suites, protocol_version);
-        
+
         let maybe_ciphersuite = if sess.config.ignore_client_order {
             suites::choose_ciphersuite_preferring_server(&client_hello.cipher_suites, &suitable_suites)
         } else {
             suites::choose_ciphersuite_preferring_client(&client_hello.cipher_suites, &suitable_suites)
         };
-        
+
         if maybe_ciphersuite.is_none() {
             return Err(incompatible(sess, "no ciphersuites in common"));
         }
-        
+
         debug!("decided upon suite {:?}", maybe_ciphersuite.as_ref().unwrap());
         sess.common.set_suite(maybe_ciphersuite.unwrap());
-        
+
         // Start handshake hash.
         let starting_hash = sess.common.get_suite_assert().get_hash();
         if !self.handshake.transcript.start_hash(starting_hash) {
@@ -691,41 +692,41 @@ impl State for ExpectClientHello {
             return Err(TLSError::PeerIncompatibleError("hash differed on retry"
             .to_string()));
         }
-            
+
         // Save their Random.
         client_hello.random.write_slice(&mut self.handshake.randoms.client);
-        
+
         if sess.common.is_tls13() {
             return self.into_complete_tls13_client_hello_handling()
             .handle_client_hello(sess, certkey, &m);
         }
-        
+
         // -- TLS1.2 only from hereon in --
         self.handshake.transcript.add_message(&m);
-        
+
         if client_hello.ems_support_offered() {
             self.handshake.using_ems = true;
         }
-        
+
         let groups_ext = client_hello.get_namedgroups_extension()
         .ok_or_else(|| incompatible(sess, "client didn't describe groups"))?;
         let ecpoints_ext = client_hello.get_ecpoints_extension()
         .ok_or_else(|| incompatible(sess, "client didn't describe ec points"))?;
-        
+
         trace!("namedgroups {:?}", groups_ext);
         trace!("ecpoints {:?}", ecpoints_ext);
-        
+
         if !ecpoints_ext.contains(&ECPointFormat::Uncompressed) {
             sess.common.send_fatal_alert(AlertDescription::IllegalParameter);
             return Err(TLSError::PeerIncompatibleError("client didn't support uncompressed ec points"
             .to_string()));
         }
-        
+
         // -- If TLS1.3 is enabled, signal the downgrade in the server random
         if tls13_enabled {
             self.handshake.randoms.set_tls12_downgrade_marker();
         }
-        
+
         // -- Check for resumption --
         // We can do this either by (in order of preference):
         // 1. receiving a ticket that decrypts
@@ -739,17 +740,17 @@ impl State for ExpectClientHello {
         // our handling of the ClientHello.
         //
         let mut ticket_received = false;
-        
+
         if let Some(ticket_ext) = client_hello.get_ticket_extension() {
             if let ClientExtension::SessionTicketOffer(ref ticket) = *ticket_ext {
                 ticket_received = true;
                 debug!("Ticket received");
-                
+
                 let maybe_resume = sess.config
                 .ticketer
                 .decrypt(&ticket.0)
                 .and_then(|plain| persist::ServerSessionValue::read_bytes(&plain));
-                
+
                 if can_resume(sess, &self.handshake, &maybe_resume) {
                     return self.start_resumption(sess,
                                                  client_hello, sni.as_ref(),

@@ -51,6 +51,7 @@ static ALLOWED_PLAINTEXT_EXTS: &[ExtensionType] = &[
     ExtensionType::KeyShare,
     ExtensionType::PreSharedKey,
     ExtensionType::SupportedVersions,
+    ExtensionType::ProactiveCiphertext,
 ];
 
 // Only the intersection of things we offer, and those disallowed
@@ -159,7 +160,8 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
                                early_key_schedule: Option<KeyScheduleEarly>,
                                server_hello: &ServerHelloPayload,
                                handshake: &mut HandshakeDetails,
-                               hello: &mut ClientHelloDetails)
+                               hello: &mut ClientHelloDetails,
+                            )
                            -> Result<KeyScheduleHandshake, TLSError> {
     let suite = sess.common.get_suite_assert();
 
@@ -199,6 +201,10 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
         }
         early_key_schedule.unwrap()
             .into_handshake(&shared)
+    } else if let Some(_offer) = server_hello.find_extension(ExtensionType::ProactiveCiphertext) {
+        debug!("Using PDK");
+        // TODO check if offer is actually what's been offered.
+        early_key_schedule.unwrap().into_handshake(&shared)
     } else {
         debug!("Not resuming");
         // Discard the early data key schedule.
@@ -354,6 +360,7 @@ pub struct ExpectEncryptedExtensions {
     pub key_schedule: KeyScheduleHandshake,
     pub server_cert: ServerCertDetails,
     pub hello: ClientHelloDetails,
+    pub is_pdk: bool,
 }
 
 impl ExpectEncryptedExtensions {
@@ -366,6 +373,7 @@ impl ExpectEncryptedExtensions {
             client_auth: None,
             cert_verified: certv,
             sig_verified: sigv,
+            is_pdk: self.is_pdk,
         })
     }
 
@@ -393,6 +401,9 @@ impl hs::State for ExpectEncryptedExtensions {
                 sess.common.quic.params = Some(params);
             }
         }
+
+        let certv = verify::ServerCertVerified::assertion();
+        let sigv =  verify::HandshakeSignatureValid::assertion();
 
         if let Some(resuming_session) = &self.handshake.resuming_session {
             let was_early_traffic = sess.common.early_traffic;
@@ -422,8 +433,8 @@ impl hs::State for ExpectEncryptedExtensions {
 
             // We *don't* reverify the certificate chain here: resumption is a
             // continuation of the previous session in terms of security policy.
-            let certv = verify::ServerCertVerified::assertion();
-            let sigv =  verify::HandshakeSignatureValid::assertion();
+            Ok(self.into_expect_finished_resume(certv, sigv))
+        } else if self.is_pdk{
             Ok(self.into_expect_finished_resume(certv, sigv))
         } else {
             if exts.early_data_extension_offered() {
@@ -493,7 +504,7 @@ impl ExpectCertificate {
 
     fn emit_finished_and_into_expect_server_finished(mut self, sess: &mut ClientSessionImpl) -> hs::NextState {
         let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(None);
-        emit_finished_tls13(&mut self.handshake, &ks, sess);
+        emit_finished_tls13(&mut self.handshake, &ks, sess, false);
         let write_key = ks
             .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
                                                &*sess.config.key_log,
@@ -618,7 +629,7 @@ struct ExpectCiphertext {
 impl ExpectCiphertext {
     fn into_expect_finished(mut self, sess: &mut ClientSessionImpl, shared_secret: &[u8]) -> hs::NextState {
         let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(Some(shared_secret));
-        emit_finished_tls13(&mut self.handshake, &ks, sess);
+        emit_finished_tls13(&mut self.handshake, &ks, sess, false);
         let write_key = ks
             .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
                                                &*sess.config.key_log,
@@ -669,6 +680,7 @@ impl ExpectCertificateVerify {
             client_auth: self.client_auth,
             cert_verified: certv,
             sig_verified: sigv,
+            is_pdk: false,
         })
     }
 }
@@ -876,11 +888,18 @@ fn emit_certverify_tls13(handshake: &mut HandshakeDetails,
 
 fn emit_finished_tls13(handshake: &mut HandshakeDetails,
                        key_schedule: &dyn KeyScheduleComputesClientFinish,
-                       sess: &mut ClientSessionImpl) {
+                       sess: &mut ClientSessionImpl, 
+                       is_pdk: bool) {
+
     let handshake_hash = handshake.transcript.get_current_hash();
-    let verify_data = key_schedule.sign_client_finish(&handshake_hash);
+    let verify_data = if is_pdk {
+        key_schedule.sign_client_finished_kemtlspdk(&handshake_hash)
+    } else { 
+        key_schedule.sign_client_finish(&handshake_hash)
+    };
     let verify_data_payload = Payload::new(verify_data);
 
+    trace!("Sending finished for hash: {:x?}", handshake_hash);
     let m = Message {
         typ: ContentType::Handshake,
         version: ProtocolVersion::TLSv1_3,
@@ -897,6 +916,8 @@ fn emit_finished_tls13(handshake: &mut HandshakeDetails,
 fn emit_end_of_early_data_tls13(handshake: &mut HandshakeDetails,
                                 sess: &mut ClientSessionImpl) {
     if sess.common.is_quic() { return; }
+
+    trace!("Sending EOED");
 
     let m = Message {
         typ: ContentType::Handshake,
@@ -917,6 +938,7 @@ struct ExpectFinished {
     client_auth: Option<ClientAuthDetails>,
     cert_verified: verify::ServerCertVerified,
     sig_verified: verify::HandshakeSignatureValid,
+    is_pdk: bool,
 }
 
 impl ExpectFinished {
@@ -941,16 +963,6 @@ impl hs::State for ExpectFinished {
         let mut st = *self;
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
 
-        let handshake_hash = st.handshake.transcript.get_current_hash();
-        let expect_verify_data = st.key_schedule.sign_server_finish(&handshake_hash);
-
-        let fin = constant_time::verify_slices_are_equal(&expect_verify_data, &finished.0)
-            .map_err(|_| {
-                         sess.common.send_fatal_alert(AlertDescription::DecryptError);
-                         TLSError::DecryptError
-                    })
-            .map(|_| verify::FinishedMessageVerified::assertion())?;
-
         let suite = sess.common.get_suite_assert();
         let maybe_write_key = if sess.common.early_traffic {
             /* Derive the client-to-server encryption key before key schedule update */
@@ -963,7 +975,26 @@ impl hs::State for ExpectFinished {
             None
         };
 
+        // Hash after SFIN
+        let handshake_hash = st.handshake.transcript.get_current_hash();
+        let (expect_verify_data, key_schedule) = if !st.is_pdk {
+            let hash = st.key_schedule.sign_server_finish(&handshake_hash);
+            let ks = st.key_schedule.into_traffic_with_client_finished_pending();
+            (hash, ks)
+        } else {
+            let ks = st.key_schedule.into_kemtlspdk_traffic_with_client_finished_pending(None);
+            (ks.sign_server_finished_kemtlspdk(&handshake_hash), ks)
+        };
+
+        let fin = constant_time::verify_slices_are_equal(&expect_verify_data, &finished.0)
+            .map_err(|_| {
+                         sess.common.send_fatal_alert(AlertDescription::DecryptError);
+                         TLSError::DecryptError
+                    })
+            .map(|_| verify::FinishedMessageVerified::assertion())?;
+
         st.handshake.transcript.add_message(&m);
+        trace!("Verified SFIN");
 
         let hash_after_handshake = st.handshake.transcript.get_current_hash();
 
@@ -989,8 +1020,8 @@ impl hs::State for ExpectFinished {
                                   sess)?;
         }
 
-        let mut key_schedule_finished = st.key_schedule.into_traffic_with_client_finished_pending();
-        emit_finished_tls13(&mut st.handshake, &key_schedule_finished, sess);
+        let mut key_schedule_finished = key_schedule;
+        emit_finished_tls13(&mut st.handshake, &key_schedule_finished, sess, st.is_pdk);
 
         /* Now move to our application traffic keys. */
         hs::check_aligned_handshake(sess)?;
@@ -1009,10 +1040,16 @@ impl hs::State for ExpectFinished {
                                                      &*sess.config.key_log,
                                                      &st.handshake.randoms.client);
 
+        let derivation_hash = if st.is_pdk {
+            st.handshake.transcript.get_current_hash().clone()
+        } else {
+            hash_after_handshake.clone()
+        };
         let write_key = key_schedule_finished
-            .client_application_traffic_secret(&hash_after_handshake,
+            .client_application_traffic_secret(&derivation_hash,
                                                &*sess.config.key_log,
                                                &st.handshake.randoms.client);
+        trace!("derived write key from hash {:x?}", &derivation_hash);
         sess.common
             .record_layer
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
