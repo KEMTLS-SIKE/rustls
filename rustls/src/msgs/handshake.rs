@@ -620,6 +620,7 @@ pub enum ClientExtension {
     Unknown(UnknownExtension),
     CachedInformation(CachedInfo),
     ProactiveCiphertext(ProactiveCiphertextOffer),
+    ProactiveClientAuth,
 }
 
 impl ClientExtension {
@@ -644,6 +645,7 @@ impl ClientExtension {
             ClientExtension::EarlyData => ExtensionType::EarlyData,
             ClientExtension::CachedInformation(_) => ExtensionType::CachedInformation,
             ClientExtension::ProactiveCiphertext(_) => ExtensionType::ProactiveCiphertext,
+            ClientExtension::ProactiveClientAuth => ExtensionType::ProactiveClientAuth,
             ClientExtension::Unknown(ref r) => r.typ,
         }
     }
@@ -662,6 +664,7 @@ impl Codec for ClientExtension {
             ClientExtension::SessionTicketRequest |
                 ClientExtension::ExtendedMasterSecretRequest |
                 ClientExtension::SignedCertificateTimestampRequest |
+                ClientExtension::ProactiveClientAuth |
                 ClientExtension::EarlyData => (),
             ClientExtension::SessionTicketOffer(ref r) => r.encode(&mut sub),
             ClientExtension::Protocols(ref r) => r.encode(&mut sub),
@@ -740,6 +743,7 @@ impl Codec for ClientExtension {
             ExtensionType::ProactiveCiphertext => {
                 ClientExtension::ProactiveCiphertext(ProactiveCiphertextOffer::read(&mut sub)?)
             }
+            ExtensionType::ProactiveClientAuth | 
             ExtensionType::EarlyData if !sub.any_left() => {
                 ClientExtension::EarlyData
             },

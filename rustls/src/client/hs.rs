@@ -9,7 +9,7 @@ use crate::msgs::handshake::{ECPointFormatList, SupportedPointFormats};
 use crate::msgs::handshake::{ProtocolNameList, ConvertProtocolNameList};
 use crate::msgs::handshake::HelloRetryRequest;
 use crate::msgs::handshake::{CertificateStatusRequest, SCTList};
-use crate::msgs::enums::{PSKKeyExchangeMode, ECPointFormat};
+use crate::msgs::enums::{PSKKeyExchangeMode, ECPointFormat, SignatureAlgorithm};
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::persist;
 use crate::client::ClientSessionImpl;
@@ -34,6 +34,8 @@ use crate::client::common::{ClientHelloDetails, ReceivedTicketDetails};
 use crate::client::{tls12, tls13};
 
 use webpki;
+
+use super::common::ClientAuthDetails;
 
 pub type NextState = Box<dyn State + Send + Sync>;
 pub type NextStateOrError = Result<NextState, TLSError>;
@@ -147,6 +149,7 @@ struct ExpectServerHello {
     server_cert: ServerCertDetails,
     may_send_cert_status: bool,
     must_issue_new_ticket: bool,
+    client_auth: Option<ClientAuthDetails>,
 }
 
 struct ExpectServerHelloOrHelloRetryRequest(ExpectServerHello);
@@ -214,9 +217,11 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     let mut proactive_static_shared_secret = None;
     if !sess.config.known_certificates.is_empty() {
         exts.push(ClientExtension::make_cached_certs(&sess.config.known_certificates));
-        if let Some((ext, ss)) = ClientExtension::make_proactive_ciphertext(&sess.config.known_certificates, handshake.dns_name.as_ref()) {
-            exts.push(ext);
-            proactive_static_shared_secret = Some(ss);
+        if support_tls13 {
+            if let Some((ext, ss)) = ClientExtension::make_proactive_ciphertext(&sess.config.known_certificates, handshake.dns_name.as_ref()) {
+                exts.push(ext);
+                proactive_static_shared_secret = Some(ss);
+            }
         }
     }
 
@@ -268,6 +273,11 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         false
     };
 
+    // indicate KEMTLS-PDK client auth is coming
+    if sess.config.client_auth_cert_resolver.has_certs() && proactive_static_shared_secret.is_some() {
+        exts.push(ClientExtension::ProactiveClientAuth);
+    }
+
     // Note what extensions we sent.
     hello.sent_extensions = exts.iter()
         .map(ClientExtension::get_type)
@@ -317,6 +327,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     handshake.transcript.add_message(&ch);
     sess.common.send_msg(ch, false);
 
+    let mut maybe_client_auth = None;
     // Calculate the hash of ClientHello and use it to derive EarlyTrafficSecret
     if sess.early_data.is_enabled() {
         // For middlebox compatibility
@@ -347,6 +358,28 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         // Now the client can send encrypted early data
         sess.common.early_traffic = true;
         trace!("Starting early data traffic");
+    } else if sess.config.client_auth_cert_resolver.has_certs() {
+        let maybe_certkey = sess.config.client_auth_cert_resolver.resolve(&[], &[]);
+        if let Some(mut certkey) = maybe_certkey {
+            if certkey.key.algorithm() == SignatureAlgorithm::KEMTLS {
+                tls13::emit_fake_ccs(&mut handshake, sess);
+                let client_early_traffic_secret = early_key_schedule
+                    .as_ref()
+                    .unwrap()
+                    .client_early_traffic_secret(&handshake.transcript.get_hash_given(ALL_CIPHERSUITES[0].get_hash(), &[]),
+                                                 &*sess.config.key_log,
+                                                 &handshake.randoms.client);
+                sess.common.record_layer
+                    .set_message_encrypter(cipher::new_tls13_write(ALL_CIPHERSUITES[0], &client_early_traffic_secret));
+                debug!("Attempting pdk client auth");
+                let mut client_auth = ClientAuthDetails::new();
+                client_auth.private_key = Some(certkey.key.get_bytes().to_vec());
+                client_auth.cert = Some(certkey.take_cert());
+                client_auth.auth_context = None;
+                tls13::emit_certificate_tls13(&mut handshake, &mut client_auth, sess);
+                maybe_client_auth = Some(client_auth);
+            }
+        }
     }
 
     let next = ExpectServerHello {
@@ -356,6 +389,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         server_cert: ServerCertDetails::new(),
         may_send_cert_status: false,
         must_issue_new_ticket: false,
+        client_auth: maybe_client_auth,
     };
 
     if support_tls13 && retryreq.is_none() {
@@ -395,6 +429,7 @@ impl ExpectServerHello {
             server_cert: self.server_cert,
             hello: self.hello,
             is_pdk,
+            client_auth: self.client_auth,
         })
     }
 

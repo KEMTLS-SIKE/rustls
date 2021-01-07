@@ -640,7 +640,7 @@ impl State for ExpectClientHello {
         sigschemes_ext.retain(|scheme| suites::compatible_sigscheme_for_suites(*scheme, &common_suites));
 
         let alpn_protocols = client_hello.get_alpn_extension()
-        .map(|protos| protos.to_slices());
+            .map(|protos| protos.to_slices());
 
         // Choose a certificate.
         let mut certkey = {
@@ -698,7 +698,7 @@ impl State for ExpectClientHello {
 
         if sess.common.is_tls13() {
             return self.into_complete_tls13_client_hello_handling()
-            .handle_client_hello(sess, certkey, &m);
+                       .handle_client_hello(sess, certkey, &m);
         }
 
         // -- TLS1.2 only from hereon in --

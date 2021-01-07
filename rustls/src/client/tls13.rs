@@ -361,6 +361,7 @@ pub struct ExpectEncryptedExtensions {
     pub server_cert: ServerCertDetails,
     pub hello: ClientHelloDetails,
     pub is_pdk: bool,
+    pub client_auth: Option<ClientAuthDetails>
 }
 
 impl ExpectEncryptedExtensions {
@@ -374,6 +375,7 @@ impl ExpectEncryptedExtensions {
             cert_verified: certv,
             sig_verified: sigv,
             is_pdk: self.is_pdk,
+            client_auth_shared_secret: None,
         })
     }
 
@@ -382,6 +384,15 @@ impl ExpectEncryptedExtensions {
             handshake: self.handshake,
             key_schedule: self.key_schedule,
             server_cert: self.server_cert,
+        })
+    }
+
+    fn into_expect_ciphertext(self) -> hs::NextState {
+        Box::new(ExpectCiphertext {
+            handshake: self.handshake,
+            client_auth: self.client_auth.unwrap(),
+            key_schedule: self.key_schedule,
+            is_pdk: true,
         })
     }
 }
@@ -434,8 +445,10 @@ impl hs::State for ExpectEncryptedExtensions {
             // We *don't* reverify the certificate chain here: resumption is a
             // continuation of the previous session in terms of security policy.
             Ok(self.into_expect_finished_resume(certv, sigv))
-        } else if self.is_pdk{
+        } else if self.is_pdk && self.client_auth.is_none() {
             Ok(self.into_expect_finished_resume(certv, sigv))
+        } else if self.is_pdk && self.client_auth.is_some() {
+            Ok(self.into_expect_ciphertext())
         } else {
             if exts.early_data_extension_offered() {
                 let msg = "server sent early data extension without resumption".to_string();
@@ -499,6 +512,7 @@ impl ExpectCertificate {
             handshake: self.handshake,
             key_schedule: self.key_schedule,
             client_auth: self.client_auth.unwrap(),
+            is_pdk: false,
         })
     }
 
@@ -624,26 +638,39 @@ struct ExpectCiphertext {
     handshake: HandshakeDetails,
     key_schedule: KeyScheduleHandshake,
     client_auth: ClientAuthDetails,
+    is_pdk: bool,
 }
 
 impl ExpectCiphertext {
     fn into_expect_finished(mut self, sess: &mut ClientSessionImpl, shared_secret: &[u8]) -> hs::NextState {
-        let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(Some(shared_secret));
-        emit_finished_tls13(&mut self.handshake, &ks, sess, false);
-        let write_key = ks
-            .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
-                                               &*sess.config.key_log,
-                                               &self.handshake.randoms.client);
-        let suite = sess.common.get_suite_assert();
-        sess.common
-            .record_layer
-            .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-        
-        sess.common.start_traffic();
-        Box::new(ExpectKEMTLSFinished {
-            handshake: self.handshake,
-            key_schedule: ks,
-        })
+        if self.is_pdk {
+            Box::new(ExpectFinished {
+                handshake: self.handshake,
+                key_schedule: self.key_schedule,
+                cert_verified: verify::ServerCertVerified::assertion(),
+                sig_verified: verify::HandshakeSignatureValid::assertion(),
+                is_pdk: true,
+                client_auth: Some(self.client_auth),
+                client_auth_shared_secret: Some(shared_secret.to_vec()),
+            })
+        } else {
+            let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(Some(shared_secret));
+            emit_finished_tls13(&mut self.handshake, &ks, sess, false);
+            let write_key = ks
+                .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
+                                                &*sess.config.key_log,
+                                                &self.handshake.randoms.client);
+            let suite = sess.common.get_suite_assert();
+            sess.common
+                .record_layer
+                .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
+            
+            sess.common.start_traffic();
+            Box::new(ExpectKEMTLSFinished {
+                handshake: self.handshake,
+                key_schedule: ks,
+            })
+        }
     }
 }
 
@@ -681,6 +708,7 @@ impl ExpectCertificateVerify {
             cert_verified: certv,
             sig_verified: sigv,
             is_pdk: false,
+            client_auth_shared_secret: None,
         })
     }
 }
@@ -825,7 +853,7 @@ impl hs::State for ExpectCertificateRequest {
     }
 }
 
-fn emit_certificate_tls13(handshake: &mut HandshakeDetails,
+pub fn emit_certificate_tls13(handshake: &mut HandshakeDetails,
                           client_auth: &mut ClientAuthDetails,
                           sess: &mut ClientSessionImpl) {
     let context = client_auth.auth_context
@@ -939,6 +967,7 @@ struct ExpectFinished {
     cert_verified: verify::ServerCertVerified,
     sig_verified: verify::HandshakeSignatureValid,
     is_pdk: bool,
+    client_auth_shared_secret: Option<Vec<u8>>
 }
 
 impl ExpectFinished {
@@ -982,7 +1011,7 @@ impl hs::State for ExpectFinished {
             let ks = st.key_schedule.into_traffic_with_client_finished_pending();
             (hash, ks)
         } else {
-            let ks = st.key_schedule.into_kemtlspdk_traffic_with_client_finished_pending(None);
+            let ks = st.key_schedule.into_kemtlspdk_traffic_with_client_finished_pending(st.client_auth_shared_secret.as_deref());
             (ks.sign_server_finished_kemtlspdk(&handshake_hash), ks)
         };
 

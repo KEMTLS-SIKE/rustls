@@ -243,6 +243,7 @@ enum_builder! {
         TransportParameters => 0xffa5,
         CachedInformation => 0x0019,
         ProactiveCiphertext => 0xfff1,
+        ProactiveClientAuth => 0xfff2,
     }
 }
 

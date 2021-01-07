@@ -414,11 +414,27 @@ fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
 }
 
 fn load_private_key(filename: &str) -> rustls::PrivateKey {
-    let keyfile = fs::File::open(filename).expect("cannot open private key file");
-    let mut reader = BufReader::new(keyfile);
-    let keys = rustls::internal::pemfile::rsa_private_keys(&mut reader).unwrap();
-    assert!(keys.len() == 1);
-    keys[0].clone()
+    let rsa_keys = {
+        let keyfile = fs::File::open(filename).expect("cannot open private key file");
+        let mut reader = BufReader::new(keyfile);
+        rustls::internal::pemfile::rsa_private_keys(&mut reader)
+            .expect("file contains invalid rsa private key")
+    };
+
+    let pkcs8_keys = {
+        let keyfile = fs::File::open(filename).expect("cannot open private key file");
+        let mut reader = BufReader::new(keyfile);
+        rustls::internal::pemfile::pkcs8_private_keys(&mut reader)
+            .expect("file contains invalid pkcs8 private key (encrypted keys not supported)")
+    };
+
+    // prefer to load pkcs8 keys
+    if !pkcs8_keys.is_empty() {
+        pkcs8_keys[0].clone()
+    } else {
+        assert!(!rsa_keys.is_empty());
+        rsa_keys[0].clone()
+    }
 }
 
 fn load_key_and_cert(config: &mut rustls::ClientConfig, keyfile: &str, certsfile: &str) {
