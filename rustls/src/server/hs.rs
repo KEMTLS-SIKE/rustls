@@ -689,8 +689,7 @@ impl State for ExpectClientHello {
         let starting_hash = sess.common.get_suite_assert().get_hash();
         if !self.handshake.transcript.start_hash(starting_hash) {
             sess.common.send_fatal_alert(AlertDescription::IllegalParameter);
-            return Err(TLSError::PeerIncompatibleError("hash differed on retry"
-            .to_string()));
+            return Err(TLSError::PeerIncompatibleError("hash differed on retry".to_string()));
         }
 
         // Save their Random.

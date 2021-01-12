@@ -743,9 +743,11 @@ impl Codec for ClientExtension {
             ExtensionType::ProactiveCiphertext => {
                 ClientExtension::ProactiveCiphertext(ProactiveCiphertextOffer::read(&mut sub)?)
             }
-            ExtensionType::ProactiveClientAuth | 
             ExtensionType::EarlyData if !sub.any_left() => {
                 ClientExtension::EarlyData
+            },
+            ExtensionType::ProactiveClientAuth if !sub.any_left() => {
+                ClientExtension::ProactiveClientAuth
             },
             ExtensionType::CachedInformation => ClientExtension::CachedInformation(CachedInfo::read(&mut sub)?),
             _ => ClientExtension::Unknown(UnknownExtension::read(typ, &mut sub)?),
@@ -946,7 +948,7 @@ impl ServerExtension {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClientHelloPayload {
     pub client_version: ProtocolVersion,
     pub random: Random,

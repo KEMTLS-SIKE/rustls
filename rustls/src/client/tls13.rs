@@ -518,7 +518,10 @@ impl ExpectCertificate {
 
     fn emit_finished_and_into_expect_server_finished(mut self, sess: &mut ClientSessionImpl) -> hs::NextState {
         let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(None);
-        emit_finished_tls13(&mut self.handshake, &ks, sess, false);
+        {
+            let handshake_hash = &self.handshake.transcript.get_current_hash();
+            emit_finished_tls13(&mut self.handshake, &ks, sess, handshake_hash, false);
+        }
         let write_key = ks
             .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
                                                &*sess.config.key_log,
@@ -539,6 +542,7 @@ impl ExpectCertificate {
 
 impl hs::State for ExpectCertificate {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> hs::NextStateOrError {
+        trace!("trying to parse certificate");
         let cert_chain = require_handshake_msg!(m, HandshakeType::Certificate, HandshakePayload::CertificateTLS13)?;
         self.handshake.transcript.add_message(&m);
         let mut cert_chain = cert_chain.clone();
@@ -655,7 +659,10 @@ impl ExpectCiphertext {
             })
         } else {
             let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(Some(shared_secret));
-            emit_finished_tls13(&mut self.handshake, &ks, sess, false);
+            {
+                let handshake_hash = &self.handshake.transcript.get_current_hash();
+                emit_finished_tls13(&mut self.handshake, &ks, sess, handshake_hash, true);
+            }
             let write_key = ks
                 .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
                                                 &*sess.config.key_log,
@@ -879,6 +886,7 @@ pub fn emit_certificate_tls13(handshake: &mut HandshakeDetails,
             payload: HandshakePayload::CertificateTLS13(cert_payload),
         }),
     };
+    trace!("Sending certificate message {:?}", &m);
     handshake.transcript.add_message(&m);
     sess.common.send_msg(m, true);
 }
@@ -916,14 +924,13 @@ fn emit_certverify_tls13(handshake: &mut HandshakeDetails,
 
 fn emit_finished_tls13(handshake: &mut HandshakeDetails,
                        key_schedule: &dyn KeyScheduleComputesClientFinish,
-                       sess: &mut ClientSessionImpl, 
+                       sess: &mut ClientSessionImpl,
+                       handshake_hash: &[u8],
                        is_pdk: bool) {
-
-    let handshake_hash = handshake.transcript.get_current_hash();
     let verify_data = if is_pdk {
-        key_schedule.sign_client_finished_kemtlspdk(&handshake_hash)
+        key_schedule.sign_client_finished_kemtlspdk(handshake_hash)
     } else { 
-        key_schedule.sign_client_finish(&handshake_hash)
+        key_schedule.sign_client_finish(handshake_hash)
     };
     let verify_data_payload = Payload::new(verify_data);
 
@@ -1040,7 +1047,7 @@ impl hs::State for ExpectFinished {
 
         /* Send our authentication/finished messages.  These are still encrypted
          * with our handshake keys. */
-        if st.client_auth.is_some() {
+        if st.client_auth.is_some() && !st.is_pdk {
             emit_certificate_tls13(&mut st.handshake,
                                    st.client_auth.as_mut().unwrap(),
                                    sess);
@@ -1050,7 +1057,9 @@ impl hs::State for ExpectFinished {
         }
 
         let mut key_schedule_finished = key_schedule;
-        emit_finished_tls13(&mut st.handshake, &key_schedule_finished, sess, st.is_pdk);
+        // use hash_after_handshake, which is equal to the current hash in KEMTLS(PDK)
+        // and equal to the SFIN hash in TLS 1.3
+        emit_finished_tls13(&mut st.handshake, &key_schedule_finished, sess, &hash_after_handshake, st.is_pdk);
 
         /* Now move to our application traffic keys. */
         hs::check_aligned_handshake(sess)?;
