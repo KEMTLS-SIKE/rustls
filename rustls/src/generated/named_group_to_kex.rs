@@ -102,12 +102,6 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
-        NamedGroup::Saber => {
-            oqs::init();
-            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::Kyber512).unwrap();
-            Some(KexAlgorithm::KEM(kem))
-        },
-
         NamedGroup::SidhP434 => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::Kyber512).unwrap();

@@ -424,7 +424,7 @@ impl PQSigningKey {
                 let oqsalg = include!("generated/sigscheme_to_oqsalg.rs");
                 oqs::init();
                 let oqsalg = oqs::sig::Sig::new(oqsalg).unwrap();
-                assert_eq!(private_key.len(), oqsalg.length_secret_key(), "secret key length");
+                assert_eq!(private_key.len(), oqsalg.length_secret_key(), "secret key length wrong for {:?}", scheme);
 
                 Ok(private_key.as_slice_less_safe().to_vec())
          })

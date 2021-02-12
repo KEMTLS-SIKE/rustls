@@ -66,6 +66,5 @@ match scheme {
     SignatureScheme::KEMTLS_SABER => include_bytes!("data/alg-saber.der"),
     SignatureScheme::KEMTLS_FIRESABER => include_bytes!("data/alg-firesaber.der"),
     SignatureScheme::KEMTLS_NTRUHPS2048509 => include_bytes!("data/alg-ntruhps2048509.der"),
-    SignatureScheme::KEMTLS_SABER => include_bytes!("data/alg-saber.der"),
     SignatureScheme::KEMTLS_SIDHP434 => include_bytes!("data/alg-SidhP434.der"),
     _ => unreachable!(),}

@@ -35,11 +35,6 @@ mod online {
     }
 
     #[test]
-    fn aws() {
-        check("aws.amazon.com")
-    }
-
-    #[test]
     fn microsoft() {
         check("www.microsoft.com")
     }

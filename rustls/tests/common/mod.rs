@@ -196,7 +196,7 @@ pub fn transfer_altered<F>(left: &mut dyn Session, filter: F, right: &mut dyn Se
     total
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub enum KeyType {
     RSA,
     ECDSA,

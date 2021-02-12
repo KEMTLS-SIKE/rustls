@@ -86,8 +86,7 @@ enum_builder! {
         KEMTLS_SABER => 0xfe40,
         KEMTLS_FIRESABER => 0xfe41,
         KEMTLS_NTRUHPS2048509 => 0xfe42,
-        KEMTLS_SABER => 0xfe43,
-        KEMTLS_SIDHP434 => 0xfe44,
+        KEMTLS_SIDHP434 => 0xfe43,
 
     }
 }

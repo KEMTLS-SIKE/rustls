@@ -627,7 +627,9 @@ impl ClientCheckCertResolve {
 impl Drop for ClientCheckCertResolve {
     fn drop(&mut self) {
         let count = self.query_count.load(Ordering::SeqCst);
-        assert_eq!(count, self.expect_queries);
+        if !std::thread::panicking() {
+            assert_eq!(count, self.expect_queries);
+        }
     }
 }
 

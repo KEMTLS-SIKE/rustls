@@ -16,6 +16,5 @@ match scheme {
     SignatureScheme::KEMTLS_SABER => oqs::kem::Algorithm::Saber,
     SignatureScheme::KEMTLS_FIRESABER => oqs::kem::Algorithm::Firesaber,
     SignatureScheme::KEMTLS_NTRUHPS2048509 => oqs::kem::Algorithm::NtruHps2048509,
-    SignatureScheme::KEMTLS_SABER => oqs::kem::Algorithm::Saber,
     SignatureScheme::KEMTLS_SIDHP434 => oqs::kem::Algorithm::SidhP434,
     _ => unreachable!(),}

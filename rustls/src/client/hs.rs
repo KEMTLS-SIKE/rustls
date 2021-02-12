@@ -297,11 +297,13 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
 
     let early_key_schedule = if fill_in_binder {
         Some(tls13::fill_in_psk_binder(sess, &mut handshake, &mut chp))
-    } else if let Some(ss) = proactive_static_shared_secret {
+    } else if let Some(ss) = &proactive_static_shared_secret {
         Some(KeyScheduleEarly::new(ALL_CIPHERSUITES[0].hkdf_algorithm, ss.as_ref()))
     } else {
         None
     };
+
+    let is_pdk = proactive_static_shared_secret.is_some();
 
     let ch = Message {
         typ: ContentType::Handshake,
@@ -358,8 +360,14 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
         // Now the client can send encrypted early data
         sess.common.early_traffic = true;
         trace!("Starting early data traffic");
-    } else if sess.config.client_auth_cert_resolver.has_certs() {
-        let maybe_certkey = sess.config.client_auth_cert_resolver.resolve(&[], &[]);
+    } else if sess.config.client_auth_cert_resolver.has_certs() && is_pdk {
+        let issuers = sess.config.known_certificates.iter().map(|c| {
+            let crt = webpki::EndEntityCert::from(&c.0).unwrap();
+            crt.subject().to_vec()
+        }).collect::<Vec<_>>();
+        use crate::msgs::enums::SignatureScheme;
+        let refissuers = issuers.iter().map(|c| c.as_ref()).collect::<Vec<_>>();
+        let maybe_certkey = sess.config.client_auth_cert_resolver.resolve(&refissuers, include!("../generated/pq_kemschemes.rs"));
         if let Some(mut certkey) = maybe_certkey {
             if certkey.key.algorithm() == SignatureAlgorithm::KEMTLS {
                 tls13::emit_fake_ccs(&mut handshake, sess);

@@ -72,6 +72,5 @@
     SignatureScheme::KEMTLS_SABER,
     SignatureScheme::KEMTLS_FIRESABER,
     SignatureScheme::KEMTLS_NTRUHPS2048509,
-    SignatureScheme::KEMTLS_SABER,
     SignatureScheme::KEMTLS_SIDHP434,
 ]

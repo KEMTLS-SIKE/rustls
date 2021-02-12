@@ -66,8 +66,8 @@ enum_builder! {
         ECDSA => 0x03,
         ED25519 => 0x07,
         ED448 => 0x08,
-        KEMTLS => 0xdf,\n""")
-    for id, (alg, oqsalg) in enumerate(signs, start=224):
+        KEMTLS => 0x0f,\n""")
+    for id, (alg, oqsalg) in enumerate(signs, start=0x10):
         fh.write(f"        {alg.upper()} => 0x{id:02x},\n")
     fh.write("    }\n}")
 

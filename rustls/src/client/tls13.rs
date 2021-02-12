@@ -565,7 +565,6 @@ impl hs::State for ExpectCertificate {
         let eecert = webpki::EndEntityCert::from(&cert_chain.entries[0].cert.0[..])
                 .map_err(|_| TLSError::CorruptMessagePayload(ContentType::Handshake))?;
 
-
         self.server_cert.ocsp_response = cert_chain.get_end_entity_ocsp();
         self.server_cert.scts = cert_chain.get_end_entity_scts();
         self.server_cert.cert_chain = cert_chain.convert();
@@ -661,7 +660,7 @@ impl ExpectCiphertext {
             let mut ks = self.key_schedule.into_traffic_with_server_finished_pending(Some(shared_secret));
             {
                 let handshake_hash = &self.handshake.transcript.get_current_hash();
-                emit_finished_tls13(&mut self.handshake, &ks, sess, handshake_hash, true);
+                emit_finished_tls13(&mut self.handshake, &ks, sess, handshake_hash, false);
             }
             let write_key = ks
                 .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
@@ -673,6 +672,7 @@ impl ExpectCiphertext {
                 .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
             
             sess.common.start_traffic();
+
             Box::new(ExpectKEMTLSFinished {
                 handshake: self.handshake,
                 key_schedule: ks,
@@ -889,6 +889,7 @@ pub fn emit_certificate_tls13(handshake: &mut HandshakeDetails,
     trace!("Sending certificate message {:?}", &m);
     handshake.transcript.add_message(&m);
     sess.common.send_msg(m, true);
+
 }
 
 fn emit_certverify_tls13(handshake: &mut HandshakeDetails,

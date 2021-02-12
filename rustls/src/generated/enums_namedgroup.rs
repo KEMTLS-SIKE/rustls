@@ -33,7 +33,6 @@ enum_builder! {
         Saber => 0x020a,
         Firesaber => 0x020b,
         NtruHps2048509 => 0x020c,
-        Saber => 0x020d,
-        SidhP434 => 0x020e,
+        SidhP434 => 0x020d,
     }
 }
