@@ -137,8 +137,10 @@ impl CompleteClientHelloHandling {
         let mut extensions = Vec::new();
 
         // Do key exchange
+        self.handshake.print_runtime("ENCAPSULATING TO EPHEMERAL");
         let kxr = suites::KeyExchange::encapsulate(share.group,&share.payload.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
+        self.handshake.print_runtime("ENCAPSULATED TO EPHEMERAL");            
 
         let kse = KeyShareEntry::new(share.group, kxr.ciphertext.as_ref());
         extensions.push(ServerExtension::KeyShare(kse));
@@ -177,6 +179,7 @@ impl CompleteClientHelloHandling {
         trace!("sending server hello {:?}", sh);
         self.handshake.transcript.add_message(&sh);
         sess.common.send_msg(sh, false);
+        self.handshake.print_runtime("EMITTED HELO");
 
         // Start key schedule
         let suite = sess.common.get_suite_assert();
@@ -220,6 +223,8 @@ impl CompleteClientHelloHandling {
         sess.common
             .record_layer
             .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
+        
+        self.handshake.print_runtime("DERIVED HS");
 
         #[cfg(feature = "quic")] {
             sess.common.quic.hs_secrets = Some(quic::Secrets {
@@ -387,6 +392,7 @@ impl CompleteClientHelloHandling {
         };
 
         trace!("sending certificate {:?}", c);
+        self.handshake.print_runtime("EMITTED CERTIFICATE");
         self.handshake.transcript.add_message(&c);
         sess.common.send_msg(c, true);
     }
@@ -420,6 +426,7 @@ impl CompleteClientHelloHandling {
 
         trace!("sending certificate-verify {:?}", m);
         self.handshake.transcript.add_message(&m);
+        self.handshake.print_runtime("EMITTING CERTV");
         sess.common.send_msg(m, true);
         Ok(())
     }
@@ -614,9 +621,11 @@ impl CompleteClientHelloHandling {
                 let eecrt = webpki::EndEntityCert::from(server_key.cert[0].as_ref()).unwrap();
                 // accept KEMTLS-PDK
                 proactive_ss_certificate_hash = Some(offer.certificate_hash.clone());
+                self.handshake.print_runtime("PDK DECAPSULATING FROM CERTIFICATE");
                 let ss = eecrt
                         .decapsulate(server_key.key.get_bytes(), offer.ciphertext.0.as_ref())
                         .unwrap();
+                self.handshake.print_runtime("PDK DECAPSULATED FROM CERTIFICATE");
                 proactive_static_shared_secret = Some(ss);
             };
         };
@@ -731,7 +740,9 @@ impl CompleteClientHelloHandling {
                 // emit ciphertext XXX copied from ExpectCertificate.emit_ciphertext
                 let certificate = webpki::EndEntityCert::from(&cert.cert_chain[0].0)
                     .map_err(TLSError::WebPKIError)?;
+                self.handshake.print_runtime("PDK ENCAPSULATING TO CCERT");
                 let (ct, ss) = certificate.encapsulate().map_err(|_| TLSError::DecryptError)?;
+                self.handshake.print_runtime("PDK ENCAPSULATED TO CCERT");
                 let m = Message {
                     typ: ContentType::Handshake,
                     version: ProtocolVersion::TLSv1_3,
@@ -757,6 +768,8 @@ impl CompleteClientHelloHandling {
             if doing_client_auth {
                 Ok(self.into_expect_certificate(ExpectCertificateKeySchedule::TLS13(key_schedule_traffic)))
             } else {
+                self.handshake.print_runtime("WRITING TO CLIENT");
+                sess.common.start_traffic();
                 Ok(self.into_expect_finished(key_schedule_traffic, false))
             }
         }
@@ -866,6 +879,8 @@ fn emit_finished_kemtlspdk(
         .record_layer
         .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
 
+    handshake.print_runtime("WRITING TO CLIENT");
+    sess.common.start_traffic();
 
     #[cfg(feature = "quic")] {
         sess.common.quic.traffic_secrets = Some(quic::Secrets {
@@ -913,7 +928,10 @@ impl hs::State for ExpectCiphertext {
         let eecrt = self.server_key.end_entity_cert()
         .map_err(|_| TLSError::NoCertificatesPresented)
         .and_then(|crt| webpki::EndEntityCert::from(&crt.0).map_err(TLSError::WebPKIError))?;
+
+        self.handshake.print_runtime("DECAPSULATING FROM CERTIFICATE");
         let ss = eecrt.decapsulate(self.server_key.key.get_bytes(), ciphertext).map_err(TLSError::WebPKIError)?;
+        self.handshake.print_runtime("DECAPSULATED FROM CERTIFICATE");
         
         // add message to transcript
         self.handshake.transcript.add_message(&m);
@@ -936,6 +954,8 @@ impl hs::State for ExpectCiphertext {
         let suite = sess.common.get_suite_assert();
         sess.common.record_layer.set_message_encrypter(cipher::new_tls13_write(&suite, &write_key));
         sess.common.record_layer.set_message_decrypter(cipher::new_tls13_read(&suite, &read_key));
+
+        self.handshake.print_runtime("DERIVED AHS");
 
         // move on to the next phase
         if self.client_auth {
@@ -1162,6 +1182,7 @@ impl ExpectKEMTLSFinished {
 impl hs::State for ExpectKEMTLSFinished {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
+        self.handshake.print_runtime("RECEIVED FINISHED");
 
         let handshake_hash = self.handshake.transcript.get_current_hash();
         let expect_verify_data = self.key_schedule.sign_client_finish(&handshake_hash);
@@ -1231,6 +1252,7 @@ impl hs::State for ExpectKEMTLSFinished {
             }
         }
 
+        self.handshake.print_runtime("HANDSHAKE COMPLETED");
         sess.common.start_traffic();
 
         Ok(Box::new(ExpectTraffic {
@@ -1405,6 +1427,7 @@ impl hs::State for ExpectFinished {
             }
         }
 
+        self.handshake.print_runtime("HANDSHAKE COMPLETED");
         sess.common.start_traffic();
 
         #[cfg(feature = "quic")] {

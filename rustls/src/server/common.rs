@@ -4,7 +4,7 @@ use crate::suites;
 use crate::key;
 use crate::hash_hs;
 
-use std::mem;
+use std::{mem, time::Instant};
 
 pub struct HandshakeDetails {
     pub transcript: hash_hs::HandshakeHash,
@@ -13,6 +13,7 @@ pub struct HandshakeDetails {
     pub randoms: SessionRandoms,
     pub using_ems: bool,
     pub extra_exts: Vec<ServerExtension>,
+    start_time: Instant,
 }
 
 impl HandshakeDetails {
@@ -24,7 +25,17 @@ impl HandshakeDetails {
             randoms: SessionRandoms::for_server(),
             using_ems: false,
             extra_exts,
+            start_time: Instant::now(),
         }
+    }
+
+    pub(crate) fn print_runtime(&self, label: &str) {
+        println!("{}: {} ns", label, self.start_time.elapsed().as_nanos())
+    }
+
+    #[inline]
+    pub(crate) fn reset_runtime(&mut self) {
+        self.start_time = Instant::now();
     }
 }
 

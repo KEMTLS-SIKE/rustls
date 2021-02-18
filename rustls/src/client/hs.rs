@@ -33,6 +33,7 @@ use crate::client::common::{ServerCertDetails, HandshakeDetails};
 use crate::client::common::{ClientHelloDetails, ReceivedTicketDetails};
 use crate::client::{tls12, tls13};
 
+use log::warn;
 use webpki;
 
 use super::common::ClientAuthDetails;
@@ -131,6 +132,7 @@ impl InitialState {
             self.handshake.transcript.set_client_auth_enabled();
         }
         let hello_details = ClientHelloDetails::new();
+        self.handshake.print_runtime("START");
         emit_client_hello_for_retry(sess, self.handshake, hello_details, None)
     }
 }
@@ -221,6 +223,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
             if let Some((ext, ss)) = ClientExtension::make_proactive_ciphertext(&sess.config.known_certificates, handshake.dns_name.as_ref()) {
                 exts.push(ext);
                 proactive_static_shared_secret = Some(ss);
+                handshake.print_runtime("CREATED PDK ENCAPSULATION")
             }
         }
     }
@@ -325,6 +328,7 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
     }
 
     trace!("Sending ClientHello {:#?}", ch);
+    handshake.print_runtime("SENDING CHELO");
 
     handshake.transcript.add_message(&ch);
     sess.common.send_msg(ch, false);
@@ -482,6 +486,7 @@ impl State for ExpectServerHello {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
         let server_hello = require_handshake_msg!(m, HandshakeType::ServerHello, HandshakePayload::ServerHello)?;
         trace!("We got ServerHello {:#?}", server_hello);
+        self.handshake.print_runtime("RECEIVED SHELO");
 
         use crate::ProtocolVersion::{TLSv1_2, TLSv1_3};
         let tls13_supported = sess.config.supports_version(TLSv1_3);
@@ -679,6 +684,7 @@ impl ExpectServerHelloOrHelloRetryRequest {
     fn handle_hello_retry_request(mut self, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
         let hrr = require_handshake_msg!(m, HandshakeType::HelloRetryRequest, HandshakePayload::HelloRetryRequest)?;
         trace!("Got HRR {:?}", hrr);
+        warn!("HRR!");
 
         check_aligned_handshake(sess)?;
 

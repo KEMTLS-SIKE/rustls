@@ -109,6 +109,7 @@ pub fn choose_kx_groups(sess: &mut ClientSessionImpl,
 
     let mut key_shares = vec![];
 
+    handshake.print_runtime("CREATING KEYSHARES");
     for group in groups {
         // in reply to HelloRetryRequest, we must not alter any existing key
         // shares
@@ -123,6 +124,7 @@ pub fn choose_kx_groups(sess: &mut ClientSessionImpl,
             hello.offered_key_shares.push(key_share);
         }
     }
+    handshake.print_runtime("CREATED KEYSHARES");
 
     exts.push(ClientExtension::KeyShare(key_shares));
 }
@@ -173,9 +175,11 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
 
     let our_key_share = hello.find_key_share_and_discard_others(their_key_share.group)
         .ok_or_else(|| hs::illegal_param(sess, "wrong group for key share"))?;
+    handshake.print_runtime("DECAPSULATING EPHEMERAL");
     let shared = our_key_share.decapsulate(&their_key_share.payload.0)
         .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed"
                                                      .to_string()))?;
+    handshake.print_runtime("DECAPSULATED EPHEMERAL");
 
     let mut key_schedule = if let Some(selected_psk) = server_hello.get_psk_index() {
         if let Some(ref resuming) = handshake.resuming_session {
@@ -246,6 +250,8 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
     sess.common
         .record_layer
         .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
+    
+    handshake.print_runtime("DERIVED HS");
 
     #[cfg(feature = "quic")] {
         let write_key = if sess.early_data.is_enabled() {
@@ -477,7 +483,9 @@ impl ExpectCertificate {
     }
 
     fn emit_ciphertext(&mut self, sess: &mut ClientSessionImpl, certificate: webpki::EndEntityCert) -> Result<(), TLSError> {
+        self.handshake.print_runtime("ENCAPSULATING TO CERT");
         let (ct, ss) = certificate.encapsulate().map_err(TLSError::WebPKIError)?;
+        self.handshake.print_runtime("ENCAPSULATED TO CERT");
         let m = Message {
             typ: ContentType::Handshake,
             version: ProtocolVersion::TLSv1_3,
@@ -503,6 +511,8 @@ impl ExpectCertificate {
         sess.common.record_layer.set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
         sess.common.record_layer.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
 
+        self.handshake.print_runtime("DERIVED AHS");
+
         // done
         Ok(())
     }
@@ -527,10 +537,12 @@ impl ExpectCertificate {
                                                &*sess.config.key_log,
                                                &self.handshake.randoms.client);
         let suite = sess.common.get_suite_assert();
+        self.handshake.print_runtime("DERIVED MS");
         sess.common
             .record_layer
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
         
+        self.handshake.print_runtime("WRITING TO SERVER");
         sess.common.start_traffic();
 
         Box::new(ExpectKEMTLSFinished {
@@ -545,6 +557,9 @@ impl hs::State for ExpectCertificate {
         trace!("trying to parse certificate");
         let cert_chain = require_handshake_msg!(m, HandshakeType::Certificate, HandshakePayload::CertificateTLS13)?;
         self.handshake.transcript.add_message(&m);
+
+        self.handshake.print_runtime("RECEIVED CERT");
+
         let mut cert_chain = cert_chain.clone();
         cert_chain.replace_cached_entries(&sess.config.known_certificates);
 
@@ -671,6 +686,7 @@ impl ExpectCiphertext {
                 .record_layer
                 .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
             
+            self.handshake.print_runtime("WRITING TO SERVER");
             sess.common.start_traffic();
 
             Box::new(ExpectKEMTLSFinished {
@@ -682,14 +698,15 @@ impl ExpectCiphertext {
 }
 
 impl hs::State for ExpectCiphertext {
-    #[allow(unused_variables, unreachable_code)]
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> hs::NextStateOrError {
         let msg = require_handshake_msg!(m, HandshakeType::ClientKemCiphertext, HandshakePayload::ClientKemCiphertext)?;
 
         let ciphertext = &msg.0;
         let cert = self.client_auth.cert.take().unwrap();
         let eecert = webpki::EndEntityCert::from(&cert[0].0).map_err(TLSError::WebPKIError)?;
+        self.handshake.print_runtime("DECAPSULATING FROM CCERT");
         let ss= eecert.decapsulate(&self.client_auth.private_key.take().unwrap(), ciphertext).map_err(TLSError::WebPKIError)?;
+        self.handshake.print_runtime("DECAPSULATED FROM CCERT");
 
         self.handshake.transcript.add_message(&m);
         Ok(self.into_expect_finished(sess, &ss))
@@ -888,6 +905,7 @@ pub fn emit_certificate_tls13(handshake: &mut HandshakeDetails,
     };
     trace!("Sending certificate message {:?}", &m);
     handshake.transcript.add_message(&m);
+    handshake.print_runtime("EMIT CERT");
     sess.common.send_msg(m, true);
 
 }
@@ -946,6 +964,7 @@ fn emit_finished_tls13(handshake: &mut HandshakeDetails,
     };
 
     handshake.transcript.add_message(&m);
+    handshake.print_runtime("EMITTED FINISHED");
     sess.common.send_msg(m, true);
 }
 
@@ -999,6 +1018,7 @@ impl hs::State for ExpectFinished {
     fn handle(self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> hs::NextStateOrError {
         let mut st = *self;
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
+        st.handshake.print_runtime("RECEIVED FINISHED");
 
         let suite = sess.common.get_suite_assert();
         let maybe_write_key = if sess.common.early_traffic {
@@ -1094,6 +1114,8 @@ impl hs::State for ExpectFinished {
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
 
         let key_schedule_traffic = key_schedule_finished.into_traffic();
+        st.handshake.print_runtime("WRITING TO SERVER");
+        st.handshake.print_runtime("HANDSHAKE COMPLETED");
         sess.common.start_traffic();
 
         let st = Self::into_expect_traffic(st.handshake,
@@ -1138,6 +1160,7 @@ impl ExpectKEMTLSFinished {
 impl hs::State for ExpectKEMTLSFinished {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> hs::NextStateOrError {
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
+        self.handshake.print_runtime("RECEIVED FINISHED");
 
         let handshake_hash = self.handshake.transcript.get_current_hash();
         let expect_verify_data = self.key_schedule.sign_server_finish(&handshake_hash);
@@ -1149,7 +1172,6 @@ impl hs::State for ExpectKEMTLSFinished {
                     })
             .map(|_| verify::FinishedMessageVerified::assertion())?;
         self.handshake.transcript.add_message(&m);
-
 
         // derive Server's traffic key
         hs::check_aligned_handshake(sess)?;
@@ -1165,6 +1187,8 @@ impl hs::State for ExpectKEMTLSFinished {
         
         let suite = sess.common.get_suite_assert();
         sess.common.record_layer.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
+
+        self.handshake.print_runtime("HANDSHAKE COMPLETED");
         
         Ok(self.into_expect_traffic(fin))
     }
