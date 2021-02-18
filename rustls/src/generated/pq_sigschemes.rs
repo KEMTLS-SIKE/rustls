@@ -49,4 +49,5 @@
     SignatureScheme::SPHINCSSHAKE256256FROBUST,
     SignatureScheme::SPHINCSSHAKE256256SSIMPLE,
     SignatureScheme::SPHINCSSHAKE256256SROBUST,
+    SignatureScheme::XMSS,
 ]

@@ -49,4 +49,5 @@ match self.scheme {
     SignatureScheme::SPHINCSSHAKE256256FROBUST => SignatureAlgorithm::SPHINCSSHAKE256256FROBUST,
     SignatureScheme::SPHINCSSHAKE256256SSIMPLE => SignatureAlgorithm::SPHINCSSHAKE256256SSIMPLE,
     SignatureScheme::SPHINCSSHAKE256256SROBUST => SignatureAlgorithm::SPHINCSSHAKE256256SROBUST,
+    SignatureScheme::XMSS => SignatureAlgorithm::XMSS,
     _ => unreachable!(),}

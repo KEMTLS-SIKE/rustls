@@ -63,5 +63,6 @@ enum_builder! {
         SPHINCSSHAKE256256FROBUST => 0x3f,
         SPHINCSSHAKE256256SSIMPLE => 0x40,
         SPHINCSSHAKE256256SROBUST => 0x41,
+        XMSS => 0x42,
     }
 }

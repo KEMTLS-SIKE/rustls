@@ -55,6 +55,7 @@ match scheme {
     SPHINCSSHAKE256256FROBUST => Ok(&webpki::SPHINCSSHAKE256256FROBUST),
     SPHINCSSHAKE256256SSIMPLE => Ok(&webpki::SPHINCSSHAKE256256SSIMPLE),
     SPHINCSSHAKE256256SROBUST => Ok(&webpki::SPHINCSSHAKE256256SROBUST),
+    XMSS => Ok(&webpki::XMSS),
 
     _ => {
         let error_msg = format!("received unsupported sig scheme {:?}", scheme);

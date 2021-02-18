@@ -19,6 +19,7 @@ sct = "0.6.0"
 webpki = "0.21.9999"
 oqs = { version = "0.5.0", git = "https://github.com/open-quantum-safe/liboqs-rust.git", branch = "main" }
 untrusted = "0.7"
+xmss-rs = { git = "https://github.com/thomwiggers/xmss-rs.git" }
 
 [features]
 default = ["logging"]

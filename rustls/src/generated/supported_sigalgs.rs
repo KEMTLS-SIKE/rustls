@@ -63,4 +63,5 @@ static SUPPORTED_SIG_ALGS: SignatureAlgorithms = &[
     &webpki::SPHINCSSHAKE256256FROBUST,
     &webpki::SPHINCSSHAKE256256SSIMPLE,
     &webpki::SPHINCSSHAKE256256SROBUST,
+    &webpki::XMSS,
 ];
