@@ -769,7 +769,7 @@ impl CompleteClientHelloHandling {
                 Ok(self.into_expect_certificate(ExpectCertificateKeySchedule::TLS13(key_schedule_traffic)))
             } else {
                 self.handshake.print_runtime("WRITING TO CLIENT");
-                sess.common.start_traffic();
+                //sess.common.start_traffic(); // this breaks
                 Ok(self.into_expect_finished(key_schedule_traffic, false))
             }
         }
@@ -1182,6 +1182,7 @@ impl ExpectKEMTLSFinished {
 impl hs::State for ExpectKEMTLSFinished {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
+        trace!("Received KEMTLS winished");
         self.handshake.print_runtime("RECEIVED FINISHED");
 
         let handshake_hash = self.handshake.transcript.get_current_hash();

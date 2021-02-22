@@ -307,7 +307,7 @@ Usage:
 
 Options:
     -p, --port PORT       Connect to PORT [default: 443].
-    --loops               How many iterations
+    --loops NUM           How many iterations
     --http                Send a basic HTTP GET request for /.
     --cafile CAFILE       Read root certificates from CAFILE.
     --auth-key KEY        Read client authentication key from KEY.
@@ -348,7 +348,7 @@ struct Args {
     flag_auth_key: Option<String>,
     flag_auth_certs: Option<String>,
     arg_hostname: String,
-    flag_loogs: Option<usize>,
+    flag_loops: Option<usize>,
 }
 
 // TODO: um, well, it turns out that openssl s_client/s_server
@@ -574,7 +574,7 @@ fn main() -> Result<(), std::io::Error> {
             .parse_filters("trace")
             .init();
     }
-    let num_loops = args.flag_loogs.unwrap_or(1);
+    let num_loops = args.flag_loops.unwrap_or(1);
 
     let port = args.flag_port.unwrap_or(443);
     let addr = lookup_ipv4(args.arg_hostname.as_str(), port);

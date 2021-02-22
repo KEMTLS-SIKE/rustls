@@ -702,6 +702,7 @@ impl State for ExpectClientHello {
                        .handle_client_hello(sess, certkey, &m);
         }
 
+        log::warn!("TLS 1.2!!");
         // -- TLS1.2 only from hereon in --
         self.handshake.transcript.add_message(&m);
 
