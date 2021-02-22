@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
 
 use mio;
 use mio::net::{TcpListener, TcpStream};
@@ -69,6 +69,7 @@ impl TlsServer {
             match self.server.accept() {
                 Ok((socket, addr)) => {
                     debug!("Accepting new connection from {:?}", addr);
+                    socket.set_nodelay(false)?; // Nagle algorithm switch
 
                     let tls_session = rustls::ServerSession::new(&self.tls_config);
                     let mode = self.mode.clone();
@@ -617,8 +618,16 @@ fn make_config(args: &Args) -> Arc<rustls::ServerConfig> {
     Arc::new(config)
 }
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    // copy to move into ctrlc handler
+    let stopper = should_stop.clone();
+
+    ctrlc::set_handler(move || {
+        stopper.store(true, Ordering::Relaxed);
+    }).unwrap();
 
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| Ok(d.help(true)))
@@ -653,9 +662,23 @@ fn main() {
 
     let mut tlsserv = TlsServer::new(listener, mode, config);
 
-    let mut events = mio::Events::with_capacity(256);
+    let mut events = mio::Events::with_capacity(1024);
+    let timeout = Some(Duration::from_secs(1));
     loop {
-        poll.poll(&mut events, None).unwrap();
+        match poll.poll(&mut events, timeout) {
+            Ok(()) => (),
+            Err(err) => {
+                if err.kind() == io::ErrorKind::Interrupted {
+                    return Ok(());
+                } else {
+                    return Err(err);
+                }
+            }
+        };
+
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         for event in events.iter() {
             match event.token() {
@@ -668,4 +691,6 @@ fn main() {
             }
         }
     }
+
+    return Ok(())
 }

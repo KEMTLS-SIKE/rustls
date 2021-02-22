@@ -50,8 +50,7 @@ impl TlsClient {
         }
     }
 
-    /// Handles events sent to the TlsClient by mio::Poll
-    fn ready(&mut self, ev: &mio::event::Event) {
+    fn ready(&mut self, ev: &mio::event::Event) -> bool{
         assert_eq!(ev.token(), CLIENT);
 
         if ev.is_readable() {
@@ -64,8 +63,14 @@ impl TlsClient {
 
         if self.is_closed() {
             println!("Connection closed");
-            process::exit(if self.clean_closure { 0 } else { 1 });
+            if self.clean_closure {
+                return true;
+            } else {
+                println!("Unclean exit");
+                process::exit(1);
+            }
         }
+        false
     }
 
     fn read_source_to_end(&mut self, rd: &mut dyn io::Read) -> io::Result<usize> {
@@ -302,6 +307,7 @@ Usage:
 
 Options:
     -p, --port PORT       Connect to PORT [default: 443].
+    --loops               How many iterations
     --http                Send a basic HTTP GET request for /.
     --cafile CAFILE       Read root certificates from CAFILE.
     --auth-key KEY        Read client authentication key from KEY.
@@ -342,6 +348,7 @@ struct Args {
     flag_auth_key: Option<String>,
     flag_auth_certs: Option<String>,
     arg_hostname: String,
+    flag_loogs: Option<usize>,
 }
 
 // TODO: um, well, it turns out that openssl s_client/s_server
@@ -553,7 +560,7 @@ fn make_config(args: &Args) -> Arc<rustls::ClientConfig> {
 
 /// Parse some arguments, then make a TLS client connection
 /// somewhere.
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let version = env!("CARGO_PKG_NAME").to_string() + ", version: " + env!("CARGO_PKG_VERSION");
 
     let args: Args = Docopt::new(USAGE)
@@ -567,42 +574,45 @@ fn main() {
             .parse_filters("trace")
             .init();
     }
+    let num_loops = args.flag_loogs.unwrap_or(1);
 
     let port = args.flag_port.unwrap_or(443);
     let addr = lookup_ipv4(args.arg_hostname.as_str(), port);
 
     let config = make_config(&args);
 
-    let sock = TcpStream::connect(addr).unwrap();
     let dns_name = webpki::DNSNameRef::try_from_ascii_str(&args.arg_hostname).unwrap();
-    let mut tlsclient = TlsClient::new(sock, dns_name, config);
+    for i in 0..num_loops {
+        println!("Connecting to server for iteration {} of {}", i, num_loops);
+        let sock = TcpStream::connect(addr)?;
+        sock.set_nodelay(false)?;  // Nagle algorithm switch (false is default)
+        let mut tlsclient = TlsClient::new(sock, dns_name, config.clone());
 
-    if args.flag_http {
-        let httpreq = format!(
-            "GET / HTTP/1.0\r\nHost: {}\r\nConnection: \
+        if args.flag_http {
+            let httpreq = format!("GET / HTTP/1.0\r\nHost: {}\r\nConnection: \
                                close\r\nAccept-Encoding: identity\r\n\r\n",
-            args.arg_hostname
-        );
-        tlsclient
-            .write_all(httpreq.as_bytes())
-            .unwrap();
-    } else {
-        let mut stdin = io::stdin();
-        tlsclient
-            .read_source_to_end(&mut stdin)
-            .unwrap();
-    }
+                               args.arg_hostname);
+            tlsclient.write_all(httpreq.as_bytes())?;
+        } else {
+            let mut stdin = io::stdin();
+            tlsclient.read_source_to_end(&mut stdin)?;
+        }
 
-    let mut poll = mio::Poll::new().unwrap();
-    let mut events = mio::Events::with_capacity(32);
-    tlsclient.register(poll.registry());
+        let mut poll = mio::Poll::new()?;
+        let mut events = mio::Events::with_capacity(1024);
+        tlsclient.register(poll.registry());
 
-    loop {
-        poll.poll(&mut events, None).unwrap();
+        'outer: loop {
+            poll.poll(&mut events, None)?;
 
-        for ev in events.iter() {
-            tlsclient.ready(&ev);
-            tlsclient.reregister(poll.registry());
+            for ev in events.iter() {
+                let stop = tlsclient.ready(&ev);
+                tlsclient.reregister(poll.registry());
+                if stop {
+                    break 'outer;
+                }
+            }
         }
     }
+    Ok(())
 }
