@@ -880,7 +880,7 @@ fn emit_finished_kemtlspdk(
         .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
 
     handshake.print_runtime("WRITING TO CLIENT");
-    sess.common.start_traffic();
+    //sess.common.start_traffic(); // breaks
 
     #[cfg(feature = "quic")] {
         sess.common.quic.traffic_secrets = Some(quic::Secrets {
