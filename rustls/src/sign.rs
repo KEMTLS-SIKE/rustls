@@ -458,10 +458,8 @@ impl Signer for PQSigner {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, TLSError> {
         let scheme = self.scheme;
         if scheme == SignatureScheme::XMSS {
-            use xmss_rs::sign;
-            let mut sk = self.key.as_ref().clone();
-            let sig = sign(&mut sk, message);
-            return Ok(sig)
+            // we a) can't handle state b) don't trust XMSS.
+            return Err(TLSError::General("XMSS is not supported as signing algorithm.".to_string()));
         }
 
         let oqsalg: oqs::sig::Algorithm = include!("generated/sigscheme_to_oqsalg.rs");
