@@ -58,5 +58,8 @@ enum_builder! {
         SikeP751Compressed => 0x0223,
         BikeL1Fo => 0x0224,
         BikeL3Fo => 0x0225,
+        Hqc128 => 0x0226,
+        Hqc192 => 0x0227,
+        Hqc256 => 0x0228,
     }
 }

@@ -251,5 +251,23 @@ match group {
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::Kyber512).unwrap();
             Some(KexAlgorithm::KEM(kem))
         },
+
+        NamedGroup::Hqc128 => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::Kyber512).unwrap();
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::Hqc192 => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::Kyber512).unwrap();
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::Hqc256 => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::Kyber512).unwrap();
+            Some(KexAlgorithm::KEM(kem))
+        },
 _ => None,
 }
