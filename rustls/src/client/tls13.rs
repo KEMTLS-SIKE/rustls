@@ -496,6 +496,7 @@ impl ExpectCertificate {
         };
         self.handshake.transcript.add_message(&m);
         sess.common.send_msg(m, true);
+        self.handshake.print_runtime("SUBMITTED CKEX TO SERVER");
 
         // update keys
         hs::check_aligned_handshake(sess)?;
@@ -542,7 +543,7 @@ impl ExpectCertificate {
             .record_layer
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
         
-        self.handshake.print_runtime("WRITING TO SERVER");
+        self.handshake.print_runtime("CLIENT ENCRYPTING TRAFFIC");
         sess.common.start_traffic();
 
         Box::new(ExpectKEMTLSFinished {
@@ -1051,7 +1052,7 @@ impl hs::State for ExpectFinished {
             .map(|_| verify::FinishedMessageVerified::assertion())?;
 
         st.handshake.transcript.add_message(&m);
-        trace!("Verified SFIN");
+        trace!("AUTHENTICATED SERVER");
 
         let hash_after_handshake = st.handshake.transcript.get_current_hash();
 
@@ -1172,6 +1173,7 @@ impl hs::State for ExpectKEMTLSFinished {
                     })
             .map(|_| verify::FinishedMessageVerified::assertion())?;
         self.handshake.transcript.add_message(&m);
+        self.handshake.print_runtime("AUTHENTICATED SERVER");
 
         // derive Server's traffic key
         hs::check_aligned_handshake(sess)?;
@@ -1291,6 +1293,7 @@ impl ExpectTraffic {
 impl hs::State for ExpectTraffic {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, mut m: Message) -> hs::NextStateOrError {
         if m.is_content_type(ContentType::ApplicationData) {
+            self.handshake.print_runtime("RECEIVED SERVER REPLY");
             sess.common.take_received_plaintext(m.take_opaque_payload().unwrap());
         } else if let Ok(ref new_ticket) = require_handshake_msg!(m, HandshakeType::NewSessionTicket, HandshakePayload::NewSessionTicketTLS13) {
             self.handle_new_ticket_tls13(sess, new_ticket)?;

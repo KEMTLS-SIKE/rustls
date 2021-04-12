@@ -486,7 +486,7 @@ impl State for ExpectServerHello {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> NextStateOrError {
         let server_hello = require_handshake_msg!(m, HandshakeType::ServerHello, HandshakePayload::ServerHello)?;
         trace!("We got ServerHello {:#?}", server_hello);
-        self.handshake.print_runtime("RECEIVED SHELO");
+        self.handshake.print_runtime("RECEIVED SH");
 
         use crate::ProtocolVersion::{TLSv1_2, TLSv1_3};
         let tls13_supported = sess.config.supports_version(TLSv1_3);

@@ -179,7 +179,7 @@ impl CompleteClientHelloHandling {
         trace!("sending server hello {:?}", sh);
         self.handshake.transcript.add_message(&sh);
         sess.common.send_msg(sh, false);
-        self.handshake.print_runtime("EMITTED HELO");
+        self.handshake.print_runtime("EMITTED SH");
 
         // Start key schedule
         let suite = sess.common.get_suite_assert();
@@ -922,6 +922,7 @@ impl ExpectCiphertext {
 impl hs::State for ExpectCiphertext {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let ctmsg = require_handshake_msg!(m, HandshakeType::ServerKemCiphertext, HandshakePayload::ServerKemCiphertext)?;
+        self.handshake.print_runtime("RECEIVED CKEX");
         
         // decapsulate
         let ciphertext = &ctmsg.0;
@@ -929,7 +930,6 @@ impl hs::State for ExpectCiphertext {
         .map_err(|_| TLSError::NoCertificatesPresented)
         .and_then(|crt| webpki::EndEntityCert::from(&crt.0).map_err(TLSError::WebPKIError))?;
 
-        self.handshake.print_runtime("DECAPSULATING FROM CERTIFICATE");
         let ss = eecrt.decapsulate(self.server_key.key.get_bytes(), ciphertext).map_err(TLSError::WebPKIError)?;
         self.handshake.print_runtime("DECAPSULATED FROM CERTIFICATE");
         
@@ -1026,6 +1026,7 @@ impl ExpectCertificate {
     fn emit_ciphertext(&mut self, sess: &mut ServerSessionImpl, cert: ClientCertDetails) -> Result<SharedSecret, TLSError> {
         let certificate = webpki::EndEntityCert::from(&cert.cert_chain[0].0)
             .map_err(TLSError::WebPKIError)?;
+        self.handshake.print_runtime("ENCAPSULATING TO CLIENT");
         let (ct, ss) = certificate.encapsulate().map_err(|_| TLSError::DecryptError)?;
         let m = Message {
             typ: ContentType::Handshake,
@@ -1037,6 +1038,7 @@ impl ExpectCertificate {
         };
         self.handshake.transcript.add_message(&m);
         sess.common.send_msg(m, true);
+        self.handshake.print_runtime("SUBMITTED SKEX TO CLIENT");
 
         Ok(ss)
     }
@@ -1428,6 +1430,7 @@ impl hs::State for ExpectFinished {
             }
         }
 
+        self.handshake.print_runtime("READING TRAFFIC");
         self.handshake.print_runtime("HANDSHAKE COMPLETED");
         sess.common.start_traffic();
 
