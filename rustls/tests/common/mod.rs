@@ -254,7 +254,7 @@ pub fn make_server_config(kt: KeyType) -> ServerConfig {
 }
 
 pub fn get_client_root_store(kt: KeyType) -> RootCertStore {
-    let roots = kt.get_chain();
+    let roots = kt.get_client_chain();
     let mut client_auth_roots = RootCertStore::empty();
     for root in roots {
         client_auth_roots.add(&root).unwrap();
