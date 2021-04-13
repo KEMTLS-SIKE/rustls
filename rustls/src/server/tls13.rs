@@ -930,6 +930,7 @@ impl hs::State for ExpectCiphertext {
         .map_err(|_| TLSError::NoCertificatesPresented)
         .and_then(|crt| webpki::EndEntityCert::from(&crt.0).map_err(TLSError::WebPKIError))?;
 
+        self.handshake.print_runtime("DECAPSULATING FROM CERTIFICATE");
         let ss = eecrt.decapsulate(self.server_key.key.get_bytes(), ciphertext).map_err(TLSError::WebPKIError)?;
         self.handshake.print_runtime("DECAPSULATED FROM CERTIFICATE");
         
