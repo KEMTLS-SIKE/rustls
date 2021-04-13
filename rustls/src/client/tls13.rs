@@ -543,7 +543,7 @@ impl ExpectCertificate {
             .record_layer
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
         
-        self.handshake.print_runtime("CLIENT ENCRYPTING TRAFFIC");
+        self.handshake.print_runtime("WRITING TO SERVER");
         sess.common.start_traffic();
 
         Box::new(ExpectKEMTLSFinished {
@@ -794,6 +794,8 @@ impl hs::State for ExpectCertificateVerify {
 
         sess.server_cert_chain = self.server_cert.take_chain();
         self.handshake.transcript.add_message(&m);
+
+        self.handshake.print_runtime("AUTHENTICATED SERVER");
 
         Ok(self.into_expect_finished(certv, sigv))
     }

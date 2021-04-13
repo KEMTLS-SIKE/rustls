@@ -1057,6 +1057,7 @@ impl hs::State for ExpectCertificate {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let certp = require_handshake_msg!(m, HandshakeType::Certificate, HandshakePayload::CertificateTLS13)?;
         self.handshake.transcript.add_message(&m);
+        self.handshake.print_runtime("RECEIVED CERTIFICATE");
 
         // We don't send any CertificateRequest extensions, so any extensions
         // here are illegal.
@@ -1085,18 +1086,18 @@ impl hs::State for ExpectCertificate {
             return Err(TLSError::NoCertificatesPresented);
         }
 
-        sess.config.get_verifier().verify_client_cert(&cert_chain, sess.get_sni())
-            .or_else(|err| {
-                     hs::incompatible(sess, "certificate invalid");
-                     Err(err)
-                    })?;
-
-        let cert = ClientCertDetails::new(cert_chain);
-
         if self.key_schedule.is_kemtls() {
+            let cert = ClientCertDetails::new(cert_chain);
             let ss = self.emit_ciphertext(sess, cert)?;
             self.into_expect_kemtls_finished(ss)
         } else {
+            sess.config.get_verifier().verify_client_cert(&cert_chain, sess.get_sni())
+                .or_else(|err| {
+                     hs::incompatible(sess, "certificate invalid");
+                     Err(err)
+                    })?;
+            let cert = ClientCertDetails::new(cert_chain);
+
             Ok(self.into_expect_certificate_verify(cert))
         }
     }
@@ -1124,6 +1125,7 @@ impl hs::State for ExpectCertificateVerify {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let rc = {
             let sig = require_handshake_msg!(m, HandshakeType::CertificateVerify, HandshakePayload::CertificateVerify)?;
+            self.handshake.print_runtime("RECEIVED CERTV");
             let handshake_hash = self.handshake.transcript.get_current_hash();
             self.handshake.transcript.abandon_client_auth();
             let certs = &self.client_cert.cert_chain;
@@ -1140,6 +1142,8 @@ impl hs::State for ExpectCertificateVerify {
             sess.common.send_fatal_alert(AlertDescription::AccessDenied);
             return Err(e);
         }
+
+        self.handshake.print_runtime("AUTHENTICATED CLIENT");
 
         trace!("client CertificateVerify OK");
         sess.client_cert_chain = Some(self.client_cert.take_chain());
@@ -1184,7 +1188,7 @@ impl ExpectKEMTLSFinished {
 impl hs::State for ExpectKEMTLSFinished {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
-        trace!("Received KEMTLS winished");
+        trace!("Received KEMTLS finished");
         self.handshake.print_runtime("RECEIVED FINISHED");
 
         let handshake_hash = self.handshake.transcript.get_current_hash();
@@ -1229,6 +1233,7 @@ impl hs::State for ExpectKEMTLSFinished {
         self.handshake.transcript.add_message(&m);
         self.handshake.hash_at_server_fin = self.handshake.transcript.get_current_hash();
         sess.common.send_msg(m, true);
+        self.handshake.print_runtime("EMITTED FINISHED");
 
 
         let write_key = self.key_schedule
@@ -1254,7 +1259,7 @@ impl hs::State for ExpectKEMTLSFinished {
                 emit_stateful_ticket(&mut self.handshake, sess, &key_schedule_traffic);
             }
         }
-
+        self.handshake.print_runtime("READING TRAFFIC");
         self.handshake.print_runtime("HANDSHAKE COMPLETED");
         sess.common.start_traffic();
 
@@ -1364,6 +1369,7 @@ impl hs::State for ExpectFinished {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let finished = require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
         trace!("received Finished");
+        self.handshake.print_runtime("RECEIVED FINISHED");
 
         // nb. future derivations include Client Finished, but not the
         // main application data keying.
