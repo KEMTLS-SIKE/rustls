@@ -1436,7 +1436,8 @@ impl Codec for CertificatePayload {
 
     fn read(r: &mut Reader) -> Option<CertificatePayload> {
         // 64KB of certificates is plenty, 16MB is obviously silly
-        codec::read_vec_u24_limited(r, 0x10000)
+        // EXCEPT IS IT.
+        codec::read_vec_u24_limited(r, 2usize.pow(20))
     }
 }
 
