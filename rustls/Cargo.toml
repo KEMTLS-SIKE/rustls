@@ -17,7 +17,7 @@ log = { version = "0.4.4", optional = true }
 ring = "0.16.11"
 sct = "0.6.0"
 webpki = "0.21.9999"
-oqs = { version = "0.6.0", git = "https://github.com/open-quantum-safe/liboqs-rust.git", branch = "main" }
+oqs = { version = "0.6.0", git = "https://github.com/open-quantum-safe/liboqs-rust.git", branch = "main", features = ["non_portable"] }
 untrusted = "0.7"
 xmss-rs = { git = "https://github.com/thomwiggers/xmss-rs.git" }
 
