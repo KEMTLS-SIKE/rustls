@@ -1600,7 +1600,7 @@ impl Codec for CertificatePayloadTLS13 {
     fn read(r: &mut Reader) -> Option<CertificatePayloadTLS13> {
         Some(CertificatePayloadTLS13 {
             context: PayloadU8::read(r)?,
-            entries: codec::read_vec_u24_limited::<CertificateEntry>(r, 0x10000)?,
+            entries: codec::read_vec_u24_limited::<CertificateEntry>(r, 2usize.pow(23))?,
         })
     }
 }
