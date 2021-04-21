@@ -1,3 +1,10 @@
+# Experimental fork of Rustls for experimenting with Post-Quantum variants of TLS
+
+This is an experimental fork of Rustls that allows us to experiment with PQ variants of TLS, such as (variants of) KEMTLS.
+
+See https://thomwiggers.nl/project/kemtls/ for related publications and https://github.com/thomwiggers/kemtls-experiment/tree/reimplementation/ for the main repository.
+# Original README
+
 <p align="center">
   <img width="460" height="300" src="https://raw.githubusercontent.com/ctz/rustls/main/admin/rustls-logo-web.png">
 </p>
