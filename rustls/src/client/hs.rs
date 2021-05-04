@@ -218,12 +218,14 @@ fn emit_client_hello_for_retry(sess: &mut ClientSessionImpl,
 
     let mut proactive_static_shared_secret = None;
     if !sess.config.known_certificates.is_empty() {
-        exts.push(ClientExtension::make_cached_certs(&sess.config.known_certificates));
         if support_tls13 {
             if let Some((ext, ss)) = ClientExtension::make_proactive_ciphertext(&sess.config.known_certificates, handshake.dns_name.as_ref()) {
                 exts.push(ext);
                 proactive_static_shared_secret = Some(ss);
                 handshake.print_runtime("CREATED PDK ENCAPSULATION")
+            } else {
+                // send the RFC7924 thing if we're not doing PDK
+                exts.push(ClientExtension::make_cached_certs(&sess.config.known_certificates));
             }
         }
     }
