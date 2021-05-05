@@ -587,7 +587,9 @@ impl State for ExpectServerHello {
                                                               &server_hello,
                                                               &mut self.handshake,
                                                               &mut self.hello)?;
-            tls13::emit_fake_ccs(&mut self.handshake, sess);
+            // XXX: transmit CCS as late as possible. This seems to fix weird TCP side effects
+            // with large certificates (Dilithium).
+            // tls13::emit_fake_ccs(&mut self.handshake, sess);
             let is_pdk = server_hello.find_extension(ExtensionType::ProactiveCiphertext).is_some();
             return Ok(self.into_expect_tls13_encrypted_extensions(key_schedule, is_pdk));
         }

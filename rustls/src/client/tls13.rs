@@ -454,6 +454,7 @@ impl hs::State for ExpectEncryptedExtensions {
         } else if self.is_pdk && self.client_auth.is_none() {
             Ok(self.into_expect_finished_resume(certv, sigv))
         } else if self.is_pdk && self.client_auth.is_some() {
+            emit_fake_ccs(&mut self.handshake, sess);
             Ok(self.into_expect_ciphertext())
         } else {
             if exts.early_data_extension_offered() {
@@ -483,6 +484,8 @@ impl ExpectCertificate {
     }
 
     fn emit_ciphertext(&mut self, sess: &mut ClientSessionImpl, certificate: webpki::EndEntityCert) -> Result<(), TLSError> {
+        emit_fake_ccs(&mut self.handshake, sess);
+
         self.handshake.print_runtime("ENCAPSULATING TO CERT");
         let (ct, ss) = certificate.encapsulate().map_err(TLSError::WebPKIError)?;
         self.handshake.print_runtime("ENCAPSULATED TO CERT");
@@ -1068,6 +1071,9 @@ impl hs::State for ExpectFinished {
                 .record_layer
                 .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
         }
+
+        // we will now start sending data
+        emit_fake_ccs(&mut st.handshake, sess);
 
         /* Send our authentication/finished messages.  These are still encrypted
          * with our handshake keys. */
