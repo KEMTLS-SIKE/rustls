@@ -243,6 +243,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_rejoins_then_rejects_giant_certs() {
         let mut hj = HandshakeJoiner::new();
         let msg = Message {

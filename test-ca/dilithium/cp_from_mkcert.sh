@@ -4,7 +4,7 @@ set -e
 
 pushd ../../../mk-cert
 env ROOT_SIGALG=dilithium2 INT_SIGALG=dilithium2 LEAF_ALG=dilithium2 \
-    CLIENT_CA_ALG=dilithium2 CLIENT_AUTH=dilithium2 \
+    CLIENT_CA_ALG=dilithium2 CLIENT_ALG=dilithium2 \
     HOSTNAMES=testserver.com,second.testserver.com,localhost \
     pipenv run python encoder.py
 popd

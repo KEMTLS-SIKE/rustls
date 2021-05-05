@@ -110,6 +110,7 @@ mod online {
     }
 
     #[test]
+    #[ignore]
     fn too_many_sans() {
         polite();
         connect("10000-sans.badssl.com")
