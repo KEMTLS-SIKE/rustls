@@ -1058,6 +1058,10 @@ impl hs::State for ExpectFinished {
 
         st.handshake.transcript.add_message(&m);
         trace!("AUTHENTICATED SERVER");
+        if st.is_pdk {
+            // non-pdk already printed this for CERTV
+            st.handshake.print_runtime("AUTHENTICATED SERVER");
+        }
 
         let hash_after_handshake = st.handshake.transcript.get_current_hash();
 
