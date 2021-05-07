@@ -552,6 +552,7 @@ impl ExpectCertificate {
         Box::new(ExpectKEMTLSFinished {
             handshake: self.handshake,
             key_schedule: ks,
+            client_auth: false,
         })
     }
 }
@@ -696,6 +697,7 @@ impl ExpectCiphertext {
             Box::new(ExpectKEMTLSFinished {
                 handshake: self.handshake,
                 key_schedule: ks,
+                client_auth: true,
             })
         }
     }
@@ -704,6 +706,9 @@ impl ExpectCiphertext {
 impl hs::State for ExpectCiphertext {
     fn handle(mut self: Box<Self>, sess: &mut ClientSessionImpl, m: Message) -> hs::NextStateOrError {
         let msg = require_handshake_msg!(m, HandshakeType::ClientKemCiphertext, HandshakePayload::ClientKemCiphertext)?;
+
+        // server has now proven they've derived AHS
+        self.handshake.print_runtime("AUTHENTICATED SERVER");
 
         let ciphertext = &msg.0;
         let cert = self.client_auth.cert.take().unwrap();
@@ -1155,6 +1160,7 @@ impl hs::State for ExpectFinished {
 struct ExpectKEMTLSFinished {
     handshake: HandshakeDetails,
     key_schedule: KeyScheduleTrafficWithServerFinishedPending,
+    client_auth: bool,
 }
 
 impl ExpectKEMTLSFinished {
@@ -1185,7 +1191,11 @@ impl hs::State for ExpectKEMTLSFinished {
                     })
             .map(|_| verify::FinishedMessageVerified::assertion())?;
         self.handshake.transcript.add_message(&m);
-        self.handshake.print_runtime("AUTHENTICATED SERVER");
+
+        if !self.client_auth {
+            // if we had client auth, we'd already have printed this when we received ct.
+            self.handshake.print_runtime("AUTHENTICATED SERVER");
+        }
 
         // derive Server's traffic key
         hs::check_aligned_handshake(sess)?;
