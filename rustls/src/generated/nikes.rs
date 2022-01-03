@@ -1,0 +1,14 @@
+&[
+	SignatureScheme::NIKE_CSIDH2047K221,
+	SignatureScheme::NIKE_CSIDH4095K256,
+	SignatureScheme::NIKE_CSIDH5119K234,
+	SignatureScheme::NIKE_CSIDH6143K256,
+	SignatureScheme::NIKE_CSIDH8191K332,
+	SignatureScheme::NIKE_CSIDH9215K384,
+	SignatureScheme::NIKE_CTIDH2047K221,
+	SignatureScheme::NIKE_CTIDH4095K256,
+	SignatureScheme::NIKE_CTIDH5119K234,
+	SignatureScheme::NIKE_CTIDH6143K256,
+	SignatureScheme::NIKE_CTIDH8191K332,
+	SignatureScheme::NIKE_CTIDH9215K384,
+]

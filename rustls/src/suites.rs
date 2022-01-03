@@ -14,24 +14,31 @@ use std::fmt;
 pub enum KexAlgorithm {
     RingAlg(&'static ring::agreement::Algorithm),
     KEM(oqs::kem::Kem),
+    CSIDH(secsidh::Algorithm),
 }
 
-
 pub enum KexPrivateKey {
-    RingKey(ring::agreement::EphemeralPrivateKey),
+    RingKey(Option<ring::agreement::EphemeralPrivateKey>),
     KEM(oqs::kem::SecretKey),
+    CSIDH(secsidh::SecretKey),
 }
 
 impl KexPrivateKey {
-    fn into_ring_key(self) -> ring::agreement::EphemeralPrivateKey {
+    fn take_ring_key(&mut self) -> ring::agreement::EphemeralPrivateKey {
         match self {
-            Self::RingKey(key) => key,
+            Self::RingKey(key) => key.take().unwrap(),
             _ => panic!("Wrong key type"),
         }
     }
-    fn into_kem_key(self) -> oqs::kem::SecretKey {
+    fn as_kem_key(&self) -> &oqs::kem::SecretKey {
         match self {
             Self::KEM(key) => key,
+            _ => panic!("Wrong key type!"),
+        }
+    }
+    fn as_csidh_key(&self) -> &secsidh::SecretKey {
+        match self {
+            Self::CSIDH(key) => key,
             _ => panic!("Wrong key type!"),
         }
     }
@@ -40,6 +47,7 @@ impl KexPrivateKey {
 pub enum KexPublicKey {
     RingKey(ring::agreement::PublicKey),
     KEM(oqs::kem::PublicKey),
+    CSIDH(secsidh::PublicKey),
 }
 
 // impl KexPublicKey {
@@ -56,6 +64,7 @@ impl AsRef<[u8]> for KexPublicKey {
         match self {
             Self::RingKey(key) => key.as_ref(),
             Self::KEM(key) => key.as_ref(),
+            Self::CSIDH(key) => key.as_ref(),
         }
     }
 }
@@ -134,6 +143,15 @@ impl KeyExchange {
                     pubkey: KexPublicKey::KEM(pk),
                 })
             },
+            KexAlgorithm::CSIDH(alg) => {
+                let (pk, sk) = secsidh::keygen(alg).unwrap();
+                Some(KeyExchange {
+                    group: named_group,
+                    alg: KexAlgorithm::CSIDH(alg),
+                    pubkey: KexPublicKey::CSIDH(pk),
+                    privkey: KexPrivateKey::CSIDH(sk),
+                })
+            },
         }
     }
 
@@ -142,7 +160,7 @@ impl KeyExchange {
         let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
         match alg {
             KexAlgorithm::RingAlg(alg) => {
-                let kex = Self::start_ecdhe(named_group, alg)?;
+                let mut kex = Self::start_ecdhe(named_group, alg)?;
                 let ciphertext = kex.pubkey.as_ref().to_vec();
                 let shared_secret = kex.decapsulate(peer)?;
                 Some(KeyExchangeResult {
@@ -154,6 +172,16 @@ impl KeyExchange {
                 let pk = kem.public_key_from_bytes(peer)?;
                 let (ciphertext, shared_secret) = kem.encapsulate(pk).ok()?;
                 Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: shared_secret.into_vec()})
+            },
+            KexAlgorithm::CSIDH(alg) => {
+                // our public key is the ciphertext if we phrase a NIKE as a KEM
+                let (ciphertext, sk) = secsidh::keygen(alg)?;
+                let ciphertext = ciphertext.as_ref().to_vec();
+                let pk_b = secsidh::PublicKey::from_bytes(alg, peer)?;
+                let shared_secret = secsidh::derive(&pk_b, &sk)?;
+                Some(KeyExchangeResult {
+                    ciphertext, shared_secret
+                })
             },
         }
     }
@@ -170,7 +198,7 @@ impl KeyExchange {
         Some(KeyExchange {
             group: named_group,
             alg: KexAlgorithm::RingAlg(&alg),
-            privkey: KexPrivateKey::RingKey(ours),
+            privkey: KexPrivateKey::RingKey(Some(ours)),
             pubkey: KexPublicKey::RingKey(pubkey),
         })
     }
@@ -196,18 +224,18 @@ impl KeyExchange {
         Self::encapsulate(server_params.curve_params.named_group, &server_params.public.0)
     }
 
-    pub fn server_decapsulate(self, kx_params: &[u8]) -> Option<Vec<u8>> {
+    pub fn server_decapsulate(mut self, kx_params: &[u8]) -> Option<Vec<u8>> {
         self.decode_client_params(kx_params)
             .and_then(|ecdh| self.decapsulate(&ecdh.public.0))
     }
 
-    pub fn decapsulate(self, peer: &[u8]) -> Option<Vec<u8>> {
-        match self.alg {
+    pub fn decapsulate(&mut self, peer: &[u8]) -> Option<Vec<u8>> {
+        match &self.alg {
             KexAlgorithm::RingAlg(alg) => {
                 let peer_key = ring::agreement::UnparsedPublicKey::new(alg, peer);
                 let secret = ring::agreement::agree_ephemeral(
                     self.privkey
-                        .into_ring_key(),
+                        .take_ring_key(),
                     &peer_key,
                     (),
                     |v| {
@@ -224,9 +252,14 @@ impl KeyExchange {
                 Some(secret.unwrap())
             }
             KexAlgorithm::KEM(kem) => {
-                let sk = self.privkey.into_kem_key();
+                let sk = self.privkey.as_kem_key();
                 let ct = kem.ciphertext_from_bytes(peer)?;
-                Some(kem.decapsulate(&sk, ct).ok()?.into_vec())
+                Some(kem.decapsulate(sk, ct).ok()?.into_vec())
+            },
+            KexAlgorithm::CSIDH(alg) => {
+                let sk = self.privkey.as_csidh_key();
+                let pk_b = secsidh::PublicKey::from_bytes(*alg, peer)?;
+                secsidh::derive(&pk_b, &sk)
             }
         }
     }

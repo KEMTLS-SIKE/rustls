@@ -1,6 +1,8 @@
 # sigs
+from itertools import repeat
+import textwrap
 import subprocess
-from algorithms import signs, kems, get_oid
+from algorithms import signs, kems, get_oid, nikes
 
 
 with open('rustls/src/generated/named_group_to_kex.rs', 'w') as fh:
@@ -13,12 +15,21 @@ with open('rustls/src/generated/named_group_to_kex.rs', 'w') as fh:
             Some(KexAlgorithm::KEM(kem))
         }},
 """)
+    for alg in nikes:
+        algname = alg.replace("csidh", "CSIDH")
+        fh.write(f"""
+        NamedGroup::{alg.upper()} => {{
+            Some(KexAlgorithm::CSIDH(secsidh::Algorithm::{algname}))
+        }},
+""")
     fh.write("_ => None,\n}")
 
 with open('rustls/src/generated/supported_kex_groups.rs', 'w') as fh:
     fh.write("&[\n")
     for alg, oqsalg in kems:
         fh.write(f"""NamedGroup::{oqsalg},\n""")
+    for alg in nikes:
+        fh.write(f"""NamedGroup::{alg.upper()},\n""")
     fh.write("""    NamedGroup::X25519,
     NamedGroup::secp384r1,
     NamedGroup::secp256r1,
@@ -47,6 +58,8 @@ enum_builder! {
 """)
     for id, (alg, oqsalg) in enumerate(kems, start=0x01fc):
         fh.write(f"        {oqsalg} => 0x{id:04x},\n")
+    for id, alg in enumerate(nikes, start=0x01fc+len(kems)):
+        fh.write(f"        {alg.upper()} => 0x{id:04x},\n")
     fh.write("""    }
 }
 """)
@@ -66,8 +79,9 @@ enum_builder! {
         ECDSA => 0x03,
         ED25519 => 0x07,
         ED448 => 0x08,
-        KEMTLS => 0x0f,\n""")
-    for id, (alg, oqsalg) in enumerate(signs, start=0x10):
+        KEMTLS => 0x0f,
+        NIKE => 0x10,\n""")
+    for id, (alg, oqsalg) in enumerate(signs, start=0x11):
         fh.write(f"        {alg.upper()} => 0x{id:02x},\n")
     fh.write("    }\n}")
 
@@ -99,6 +113,8 @@ enum_builder! {
         fh.write(f"        {alg.upper()} => 0x{id:04x},\n")
     for id, (alg, oqsalg) in enumerate(kems, start=0xfe00 + len(signs)):
         fh.write(f"        KEMTLS_{alg.upper()} => 0x{id:04x},\n")
+    for id, alg in enumerate(nikes, start=0xfe00+len(kems)+len(signs)):
+        fh.write(f"        NIKE_{alg.upper()} => 0x{id:04x},\n")
     fh.write("""
     }
 }""")
@@ -115,6 +131,8 @@ with open("rustls/src/generated/supported_sign_tls13.rs", "w") as fh:
         fh.write(f"    SignatureScheme::{alg.upper()},\n")
     for alg, oqsalg in kems:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()},\n")
+    for alg in nikes:
+        fh.write(f"    SignatureScheme::NIKE_{alg.upper()},\n")
     fh.write("]")
 
 with open("rustls/src/generated/pq_sigscheme_to_sigalg.rs", "w") as fh:
@@ -140,6 +158,15 @@ with open("rustls/src/generated/kemscheme_to_oqsalg.rs", "w") as fh:
     fh.write("    _ => unreachable!(),")
     fh.write("}")
 
+with open("rustls/src/generated/nike_to_csidhalg.rs", "w") as fh:
+    fh.write("match scheme {\n")
+    for alg in nikes:
+        secsidhalg = alg.replace("csidh", "CSIDH")
+        fh.write(f"    SignatureScheme::NIKE_{alg.upper()} => secsidh::Algorithm::{secsidhalg},\n")
+    fh.write("    _ => unreachable!(),")
+    fh.write("}")
+
+
 with open("rustls/src/generated/pq_sigschemes.rs", "w") as fh:
     fh.write("&[\n")
     for alg, oqsalg in signs:
@@ -152,7 +179,13 @@ with open("rustls/src/generated/pq_kemschemes.rs", "w") as fh:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()},\n")
     fh.write("]")
 
-for alg, oqsalg in signs + kems:
+with open("rustls/src/generated/nikes.rs", "w") as fh:
+    fh.write("&[\n")
+    for alg in nikes:
+        fh.write(f"\tSignatureScheme::NIKE_{alg.upper()},\n")
+    fh.write("]")
+
+for alg, _ in signs + kems + list(zip(nikes, repeat("nope"))):
     input_str = f"OBJECT_IDENTIFIER {{ {get_oid(alg)} }}\n"
     subprocess.run(
         ["../mk-cert/ascii2der", "-o", f"rustls/src/generated/data/alg-{alg}.der"],
@@ -166,6 +199,8 @@ with open("rustls/src/generated/scheme_to_oid.rs", "w") as fh:
         fh.write(f"    SignatureScheme::{alg.upper()} => include_bytes!(\"data/alg-{alg}.der\"),\n")
     for alg, _ in kems:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()} => include_bytes!(\"data/alg-{alg}.der\"),\n")
+    for alg in nikes:
+        fh.write(f"    SignatureScheme::NIKE_{alg.upper()} => include_bytes!(\"data/alg-{alg}.der\"),\n")
     fh.write("    _ => unreachable!(),")
     fh.write("}")
 
@@ -207,3 +242,20 @@ match scheme {
         Err(TLSError::PeerMisbehavedError(error_msg))
     }
 }""")
+
+with open("rustls/src/generated/webpki_nike_to_sigalg.rs", "w") as fh:
+    first = True
+    for alg in nikes:
+        fh.write(textwrap.dedent(f"""
+        {"else" if not first else ""} if webpkischeme == &webpki::{alg.upper()} {{
+            return SignatureScheme::NIKE_{alg.upper()};
+        }}
+        """))
+        first = False
+
+with open("rustls/src/generated/nikealgs_match.rs",  "w") as fh:
+    fh.write("match (named_group, sigalg) {\n")
+    for alg in nikes:
+        fh.write(f"\t(NamedGroup::{alg.upper()}, SignatureScheme::NIKE_{alg.upper()}) => true,\n")
+    fh.write("\t(_, _) => false,")
+    fh.write("}")

@@ -1,4 +1,4 @@
-use crate::{ALL_CIPHERSUITES, msgs::enums::{ContentType, HandshakeType, ExtensionType}};
+use crate::{ALL_CIPHERSUITES, msgs::enums::{ContentType, HandshakeType, ExtensionType}, suites::KeyExchange};
 use crate::msgs::enums::{Compression, ProtocolVersion, AlertDescription};
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::base::Payload;
@@ -436,7 +436,7 @@ pub fn sct_list_is_invalid(scts: &SCTList) -> bool {
 }
 
 impl ExpectServerHello {
-    fn into_expect_tls13_encrypted_extensions(self, key_schedule: KeyScheduleHandshake, is_pdk: bool) -> NextState {
+    fn into_expect_tls13_encrypted_extensions(self, key_schedule: KeyScheduleHandshake, is_pdk: bool, chosen_keyshare: Option<KeyExchange>) -> NextState {
         Box::new(tls13::ExpectEncryptedExtensions {
             handshake: self.handshake,
             key_schedule,
@@ -444,6 +444,7 @@ impl ExpectServerHello {
             hello: self.hello,
             is_pdk,
             client_auth: self.client_auth,
+            chosen_keyshare: chosen_keyshare,
         })
     }
 
@@ -582,7 +583,7 @@ impl State for ExpectServerHello {
         // handshake_traffic_secret.
         if sess.common.is_tls13() {
             tls13::validate_server_hello(sess, &server_hello)?;
-            let key_schedule = tls13::start_handshake_traffic(sess,
+            let (key_schedule, kex) = tls13::start_handshake_traffic(sess,
                                                               self.early_key_schedule.take(),
                                                               &server_hello,
                                                               &mut self.handshake,
@@ -591,7 +592,7 @@ impl State for ExpectServerHello {
             // with large certificates (Dilithium).
             // tls13::emit_fake_ccs(&mut self.handshake, sess);
             let is_pdk = server_hello.find_extension(ExtensionType::ProactiveCiphertext).is_some();
-            return Ok(self.into_expect_tls13_encrypted_extensions(key_schedule, is_pdk));
+            return Ok(self.into_expect_tls13_encrypted_extensions(key_schedule, is_pdk, Some(kex)));
         }
 
         // TLS1.2 only from here-on

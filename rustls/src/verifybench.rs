@@ -143,6 +143,7 @@ fn test_wikipedia_cert() {
 }
 
 #[test]
+#[ignore]
 fn test_google_cert() {
     let cert0 = key::Certificate(include_bytes!("testdata/cert-google.0.der").to_vec());
     let cert1 = key::Certificate(include_bytes!("testdata/cert-google.1.der").to_vec());

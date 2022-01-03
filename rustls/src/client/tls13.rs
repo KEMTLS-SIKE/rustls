@@ -1,4 +1,4 @@
-use crate::{key_schedule::{KeyScheduleComputesClientFinish, KeyScheduleComputesServerFinish, KeyScheduleTrafficWithServerFinishedPending}, msgs::enums::{ContentType, HandshakeType, ExtensionType, SignatureScheme, SignatureAlgorithm}};
+use crate::{key_schedule::{KeyScheduleComputesClientFinish, KeyScheduleComputesServerFinish, KeyScheduleTrafficWithServerFinishedPending, hkdf_expand}, msgs::enums::{ContentType, HandshakeType, ExtensionType, SignatureScheme, SignatureAlgorithm}, suites::KeyExchange};
 use crate::msgs::enums::{ProtocolVersion, AlertDescription, NamedGroup};
 use crate::msgs::enums::KeyUpdateRequest;
 use crate::msgs::message::{Message, MessagePayload};
@@ -164,7 +164,7 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
                                handshake: &mut HandshakeDetails,
                                hello: &mut ClientHelloDetails,
                             )
-                           -> Result<KeyScheduleHandshake, TLSError> {
+                           -> Result<(KeyScheduleHandshake, KeyExchange), TLSError> {
     let suite = sess.common.get_suite_assert();
 
     let their_key_share = server_hello.get_key_share()
@@ -173,7 +173,7 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
             TLSError::PeerMisbehavedError("missing key share".to_string())
             })?;
 
-    let our_key_share = hello.find_key_share_and_discard_others(their_key_share.group)
+    let mut our_key_share = hello.find_key_share_and_discard_others(their_key_share.group)
         .ok_or_else(|| hs::illegal_param(sess, "wrong group for key share"))?;
     handshake.print_runtime("DECAPSULATING EPHEMERAL");
     let shared = our_key_share.decapsulate(&their_key_share.payload.0)
@@ -269,7 +269,7 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
         });
     }
 
-    Ok(key_schedule)
+    Ok((key_schedule, our_key_share))
 }
 
 pub fn prepare_resumption(sess: &mut ClientSessionImpl,
@@ -367,7 +367,8 @@ pub struct ExpectEncryptedExtensions {
     pub server_cert: ServerCertDetails,
     pub hello: ClientHelloDetails,
     pub is_pdk: bool,
-    pub client_auth: Option<ClientAuthDetails>
+    pub client_auth: Option<ClientAuthDetails>,
+    pub chosen_keyshare: Option<KeyExchange>,
 }
 
 impl ExpectEncryptedExtensions {
@@ -390,6 +391,7 @@ impl ExpectEncryptedExtensions {
             handshake: self.handshake,
             key_schedule: self.key_schedule,
             server_cert: self.server_cert,
+            keyshare: self.chosen_keyshare,
         })
     }
 
@@ -471,6 +473,7 @@ struct ExpectCertificate {
     key_schedule: KeyScheduleHandshake,
     server_cert: ServerCertDetails,
     client_auth: Option<ClientAuthDetails>,
+    keyshare: Option<KeyExchange>,
 }
 
 impl ExpectCertificate {
@@ -480,32 +483,11 @@ impl ExpectCertificate {
             key_schedule: self.key_schedule,
             server_cert: self.server_cert,
             client_auth: self.client_auth,
+            keyshare: self.keyshare,
         })
     }
 
     fn emit_ciphertext(&mut self, sess: &mut ClientSessionImpl, certificate: webpki::EndEntityCert) -> Result<(), TLSError> {
-        // 1. Verify the certificate chain.
-        if self.server_cert.cert_chain.is_empty() {
-            return Err(TLSError::NoCertificatesPresented);
-        }
-
-        let _certv = sess.config
-            .get_verifier()
-            .verify_server_cert(&sess.config.root_store,
-                                &self.server_cert.cert_chain,
-                                self.handshake.dns_name.as_ref(),
-                                &self.server_cert.ocsp_response)
-            .map_err(|err| send_cert_error_alert(sess, err))?;
-
-        // 3. Verify any included SCTs.
-        match (self.server_cert.scts.as_ref(), sess.config.ct_logs) {
-            (Some(scts), Some(logs)) => {
-                verify::verify_scts(&self.server_cert.cert_chain[0],
-                                    scts,
-                                    logs)?;
-            }
-            (_, _) => {}
-        }
         emit_fake_ccs(&mut self.handshake, sess);
 
         self.handshake.print_runtime("ENCAPSULATING TO CERT");
@@ -644,6 +626,7 @@ struct ExpectCertificateOrCertReq {
     handshake: HandshakeDetails,
     key_schedule: KeyScheduleHandshake,
     server_cert: ServerCertDetails,
+    keyshare: Option<KeyExchange>,
 }
 
 impl ExpectCertificateOrCertReq {
@@ -653,6 +636,7 @@ impl ExpectCertificateOrCertReq {
             key_schedule: self.key_schedule,
             server_cert: self.server_cert,
             client_auth: None,
+            keyshare: self.keyshare,
         })
     }
 
@@ -661,6 +645,7 @@ impl ExpectCertificateOrCertReq {
             handshake: self.handshake,
             key_schedule: self.key_schedule,
             server_cert: self.server_cert,
+            keyshare: self.keyshare,
         })
     }
 }
@@ -750,6 +735,7 @@ struct ExpectCertificateVerify {
     key_schedule: KeyScheduleHandshake,
     server_cert: ServerCertDetails,
     client_auth: Option<ClientAuthDetails>,
+    keyshare: Option<KeyExchange>,
 }
 
 impl ExpectCertificateVerify {
@@ -805,12 +791,30 @@ impl hs::State for ExpectCertificateVerify {
 
         // 2. Verify their signature on the handshake.
         let handshake_hash = self.handshake.transcript.get_current_hash();
-        let sigv = sess.config
-            .get_verifier()
-            .verify_tls13_signature(&verify::construct_tls13_server_verify_message(&handshake_hash),
-                                    &self.server_cert.cert_chain[0],
-                                    &cert_verify)
-            .map_err(|err| send_cert_error_alert(sess, err))?;
+
+        let eecert = webpki::EndEntityCert::from(&self.server_cert.cert_chain[0].0)
+                .map_err(TLSError::WebPKIError)?;
+        let sigv = if eecert.is_nike_cert() {
+            use ring::{hkdf, hmac};
+            let (_alg, pk) = eecert.nike_public_key().unwrap();
+            let ss =  self.keyshare.as_mut().unwrap().decapsulate(pk.as_slice_less_safe()).expect("this should work");
+
+            // derive xSS and compute as finished as per https://datatracker.ietf.org/doc/html/draft-ietf-tls-semistatic-dh-01#section-5
+            let key = hkdf::Salt::new(hkdf::HKDF_SHA384, &[]).extract(ss.as_ref());
+
+            let hmacalg = self.key_schedule.hmac_algorithm();
+            let hmackey = hkdf_expand(&key, hmacalg, "tls13 finished".as_bytes(), &[]);
+            hmac::verify(&hmackey, &handshake_hash, &cert_verify.sig.0)
+                .map(|_| verify::HandshakeSignatureValid::assertion())
+                .map_err(|_| send_cert_error_alert(sess, TLSError::WebPKIError(webpki::Error::InvalidSignatureForPublicKey)))?
+        } else {
+            sess.config
+                .get_verifier()
+                .verify_tls13_signature(&verify::construct_tls13_server_verify_message(&handshake_hash),
+                                        &self.server_cert.cert_chain[0],
+                                        &cert_verify)
+                .map_err(|err| send_cert_error_alert(sess, err))?
+        };
 
         // 3. Verify any included SCTs.
         match (self.server_cert.scts.as_ref(), sess.config.ct_logs) {
@@ -838,6 +842,7 @@ struct ExpectCertificateRequest {
     handshake: HandshakeDetails,
     key_schedule: KeyScheduleHandshake,
     server_cert: ServerCertDetails,
+    keyshare: Option<KeyExchange>,
 }
 
 impl ExpectCertificateRequest {
@@ -847,6 +852,7 @@ impl ExpectCertificateRequest {
             key_schedule: self.key_schedule,
             server_cert: self.server_cert,
             client_auth: Some(client_auth),
+            keyshare: self.keyshare,
         })
     }
 }

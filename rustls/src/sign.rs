@@ -9,6 +9,12 @@ use webpki;
 use std::{sync::Arc, convert::TryInto};
 use std::mem;
 
+pub(crate) fn webpki_nike_to_sigscheme(webpkischeme: &'static webpki::NikeAlgorithm) -> SignatureScheme {
+    include!("generated/webpki_nike_to_sigalg.rs");
+
+    unreachable!("shouldn't be able to get here. please regenerate sources")
+}
+
 /// An abstract signing key.
 pub trait SigningKey : Send + Sync {
     /// Choose a `SignatureScheme` from those offered.
@@ -188,6 +194,12 @@ pub fn any_pqsig_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> 
     for scheme in include!("generated/pq_kemschemes.rs") {
         if let Ok(key) = PQKemKey::new(der, *scheme) {
             return Ok(Box::new(key));
+        }
+    }
+
+    for scheme in include!("generated/nikes.rs") {
+        if let Ok(key) = NikeKey::new(der, *scheme) {
+            return Ok(Box::new(key))
         }
     }
     Err(())
@@ -532,6 +544,64 @@ impl SigningKey for PQKemKey {
 
     fn algorithm(&self) -> SignatureAlgorithm {
         SignatureAlgorithm::KEMTLS
+    }
+
+    fn get_bytes(&self) -> &[u8] {
+        &self.key
+    }
+}
+
+struct NikeKey {
+    key: Arc<Vec<u8>>,
+    scheme: SignatureScheme,
+}
+
+impl NikeKey {
+    fn new(der: &key::PrivateKey, scheme: SignatureScheme) -> Result<NikeKey, ()> {
+        use ring::io::der;
+
+        let expected_alg_id = include!("generated/scheme_to_oid.rs");
+
+        let input = untrusted::Input::from(&der.0);
+        input.read_all((), |input| {
+            der::nested(input, der::Tag::Sequence, (), |input| {
+                let version = der::small_nonnegative_integer(input)
+                    .map_err(|e| { panic!("{:?}", e) })?;
+                assert!(version <= 1);
+
+                let alg_id = der::expect_tag_and_get_value(input, der::Tag::Sequence)
+                    .map_err(|_| { panic!("getting oid failed") })?;
+                if alg_id.as_slice_less_safe() != expected_alg_id {
+                    crate::log::trace!("Alg ID didn't match for {:?}", scheme);
+                    return Err(())
+                } else {
+                    crate::log::trace!("Did match for {:?}", scheme);
+                }
+
+                let private_key = der::expect_tag_and_get_value(input, der::Tag::OctetString)
+                    .map_err(|e| { panic!("{:?}", e) })?;
+
+                let csidhalg = include!("generated/nike_to_csidhalg.rs");
+                assert_eq!(private_key.len(), secsidh::length_secret_key(csidhalg).unwrap(), "secret key length");
+
+                Ok(private_key.as_slice_less_safe().to_vec())
+         })
+            .map(|key| NikeKey{ key: Arc::new(key), scheme })
+        })
+    }
+}
+
+impl SigningKey for NikeKey {
+    fn choose_scheme(&self, offered: &[SignatureScheme]) -> Option<Box<dyn Signer>> {
+        if offered.contains(&self.scheme) {
+            panic!("why are you trying this.");
+        } else {
+            None
+        }
+    }
+
+    fn algorithm(&self) -> SignatureAlgorithm {
+        SignatureAlgorithm::NIKE
     }
 
     fn get_bytes(&self) -> &[u8] {

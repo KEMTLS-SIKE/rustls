@@ -1,0 +1,14 @@
+match (named_group, sigalg) {
+	(NamedGroup::CSIDH2047K221, SignatureScheme::NIKE_CSIDH2047K221) => true,
+	(NamedGroup::CSIDH4095K256, SignatureScheme::NIKE_CSIDH4095K256) => true,
+	(NamedGroup::CSIDH5119K234, SignatureScheme::NIKE_CSIDH5119K234) => true,
+	(NamedGroup::CSIDH6143K256, SignatureScheme::NIKE_CSIDH6143K256) => true,
+	(NamedGroup::CSIDH8191K332, SignatureScheme::NIKE_CSIDH8191K332) => true,
+	(NamedGroup::CSIDH9215K384, SignatureScheme::NIKE_CSIDH9215K384) => true,
+	(NamedGroup::CTIDH2047K221, SignatureScheme::NIKE_CTIDH2047K221) => true,
+	(NamedGroup::CTIDH4095K256, SignatureScheme::NIKE_CTIDH4095K256) => true,
+	(NamedGroup::CTIDH5119K234, SignatureScheme::NIKE_CTIDH5119K234) => true,
+	(NamedGroup::CTIDH6143K256, SignatureScheme::NIKE_CTIDH6143K256) => true,
+	(NamedGroup::CTIDH8191K332, SignatureScheme::NIKE_CTIDH8191K332) => true,
+	(NamedGroup::CTIDH9215K384, SignatureScheme::NIKE_CTIDH9215K384) => true,
+	(_, _) => false,}

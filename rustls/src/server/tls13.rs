@@ -1,4 +1,4 @@
-use crate::{Certificate, key_schedule::{KeyScheduleComputesClientFinish, KeyScheduleComputesServerFinish, KeyScheduleTrafficWithServerFinishedPending}};
+use crate::{Certificate, key_schedule::{KeyScheduleComputesClientFinish, KeyScheduleComputesServerFinish, KeyScheduleTrafficWithServerFinishedPending, hkdf_expand}, sign::webpki_nike_to_sigscheme};
 use crate::msgs::enums::{AlertDescription, SignatureScheme, NamedGroup, ContentType, HandshakeType, ProtocolVersion};
 use crate::msgs::enums::{Compression, PSKKeyExchangeMode};
 use crate::msgs::enums::KeyUpdateRequest;
@@ -138,7 +138,7 @@ impl CompleteClientHelloHandling {
 
         // Do key exchange
         self.handshake.print_runtime("ENCAPSULATING TO EPHEMERAL");
-        let kxr = suites::KeyExchange::encapsulate(share.group,&share.payload.0)
+        let kxr = suites::KeyExchange::encapsulate(share.group, &share.payload.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
         self.handshake.print_runtime("ENCAPSULATED TO EPHEMERAL");            
 
@@ -400,18 +400,46 @@ impl CompleteClientHelloHandling {
     fn emit_certificate_verify_tls13(&mut self,
                                      sess: &mut ServerSessionImpl,
                                      server_key: &mut sign::CertifiedKey,
-                                     schemes: &[SignatureScheme])
+                                     schemes: &[SignatureScheme],
+                                     chosen_share: &KeyShareEntry,
+                                     key_schedule: &KeyScheduleHandshake,
+                                    )
                                      -> Result<(), TLSError> {
         let message = verify::construct_tls13_server_verify_message(
             &self.handshake.transcript.get_current_hash()
         );
 
-        let signing_key = &server_key.key;
-        let signer = signing_key.choose_scheme(schemes)
-            .ok_or_else(|| hs::incompatible(sess, "no overlapping sigschemes"))?;
+        let eecert = webpki::EndEntityCert::from(&server_key.cert[0].0)
+            .map_err(TLSError::WebPKIError)?;
+        let (scheme, sig) = if eecert.is_nike_cert() {
+            use ring::{hkdf, hmac};
 
-        let scheme = signer.get_scheme();
-        let sig = signer.sign(&message)?;
+            let scheme = eecert.nike_public_key().unwrap().0;
+            let secsidhalg = scheme.alg;
+            let scheme = webpki_nike_to_sigscheme(scheme);
+            let private_key = server_key.key.get_bytes();
+            let private_key = secsidh::SecretKey::from_bytes(secsidhalg, private_key).unwrap();
+            let public_key = secsidh::PublicKey::from_bytes(secsidhalg, &chosen_share.payload.0).unwrap();
+
+            let ss = secsidh::derive(&public_key, &private_key).unwrap();
+
+            // derive xSS and compute as finished as per https://datatracker.ietf.org/doc/html/draft-ietf-tls-semistatic-dh-01#section-5
+            let key = hkdf::Salt::new(hkdf::HKDF_SHA384, &[]).extract(ss.as_ref());
+
+            let hmacalg = key_schedule.hmac_algorithm();
+            let hmackey = hkdf_expand(&key, hmacalg, "tls13 finished".as_bytes(), &[]);
+
+            let sig = hmac::sign(&hmackey, &self.handshake.transcript.get_current_hash()).as_ref().to_vec();
+            (scheme, sig)
+        } else {
+            let signing_key = &server_key.key;
+            let signer = signing_key.choose_scheme(schemes)
+                .ok_or_else(|| hs::incompatible(sess, "no overlapping sigschemes"))?;
+
+            let scheme = signer.get_scheme();
+            let sig = signer.sign(&message)?;
+            (scheme, sig)
+        };
 
         let cv = DigitallySignedStruct::new(scheme, sig);
 
@@ -537,7 +565,24 @@ impl CompleteClientHelloHandling {
             .nth(0)
             .cloned();
 
-        if chosen_group.is_none() {
+        // we need to decide here if our certificate is a NIKE and the group matches it.
+        let eecrt = &server_key.cert[0];
+        let eecert = webpki::EndEntityCert::from(&eecrt.0)
+            .map_err(TLSError::WebPKIError)?;
+        let is_nike = eecert.is_nike_cert();
+        let group_doesnt_match_for_optls = if is_nike && chosen_group.is_some() {
+            let sigalg = webpki_nike_to_sigscheme(eecert.nike_public_key().unwrap().0);
+            let named_group = chosen_group.unwrap();
+            let algs_match = include!("../generated/nikealgs_match.rs");
+            !algs_match
+        } else {
+            false
+        };
+
+        if chosen_group.is_none() || group_doesnt_match_for_optls {
+            if group_doesnt_match_for_optls {
+                todo!("need to implement filtering on offered groups based on certificate.");
+            }
             // We don't have a suitable key share.  Choose a suitable group and
             // send a HelloRetryRequest.
             let retry_group_maybe = supported_groups
@@ -714,7 +759,9 @@ impl CompleteClientHelloHandling {
                 true // pdk is always kemtls
             };
             if !is_kemtls {
-                self.emit_certificate_verify_tls13(sess, &mut server_key, &sigschemes_ext)?;
+                self.emit_certificate_verify_tls13(sess,
+                    &mut server_key, &sigschemes_ext,
+                    chosen_share, &key_schedule)?;
             }
             (client_auth, is_kemtls)
         } else {
@@ -1087,17 +1134,16 @@ impl hs::State for ExpectCertificate {
             return Err(TLSError::NoCertificatesPresented);
         }
 
-        sess.config.get_verifier().verify_client_cert(&cert_chain, sess.get_sni())
-        .or_else(|err| {
-             hs::incompatible(sess, "certificate invalid");
-             Err(err)
-            })?;
-
         if self.key_schedule.is_kemtls() {
             let cert = ClientCertDetails::new(cert_chain);
             let ss = self.emit_ciphertext(sess, cert)?;
             self.into_expect_kemtls_finished(ss)
         } else {
+            sess.config.get_verifier().verify_client_cert(&cert_chain, sess.get_sni())
+                .or_else(|err| {
+                     hs::incompatible(sess, "certificate invalid");
+                     Err(err)
+                    })?;
             let cert = ClientCertDetails::new(cert_chain);
 
             Ok(self.into_expect_certificate_verify(cert))

@@ -294,6 +294,10 @@ impl KeyScheduleHandshake {
             current_exporter_secret: None,
         }
     }
+
+    pub(crate) fn hmac_algorithm(&self) -> ring::hmac::Algorithm {
+        self.ks.algorithm().hmac_algorithm()
+    }
 }
 
 impl KeyScheduleComputesServerFinish for KeyScheduleHandshake {
