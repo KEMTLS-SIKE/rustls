@@ -240,15 +240,15 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
-        NamedGroup::BikeL1Fo => {
+        NamedGroup::BikeL1 => {
             oqs::init();
-            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::BikeL1Fo).unwrap();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::BikeL1).unwrap();
             Some(KexAlgorithm::KEM(kem))
         },
 
-        NamedGroup::BikeL3Fo => {
+        NamedGroup::BikeL3 => {
             oqs::init();
-            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::BikeL3Fo).unwrap();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::BikeL3).unwrap();
             Some(KexAlgorithm::KEM(kem))
         },
 
