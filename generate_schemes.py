@@ -5,9 +5,9 @@ from algorithms import signs, kems, get_oid
 
 with open('rustls/src/generated/named_group_to_kex.rs', 'w') as fh:
     fh.write("match group {\n")
-    for alg, oqsalg in kems:
+    for alg, oqsalg, asynchronous in kems:
         fh.write(f"""
-        NamedGroup::{oqsalg} => {{
+        NamedGroup::{alg.upper()} => {{
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::{oqsalg}).unwrap();
             Some(KexAlgorithm::KEM(kem))
@@ -17,8 +17,8 @@ with open('rustls/src/generated/named_group_to_kex.rs', 'w') as fh:
 
 with open('rustls/src/generated/supported_kex_groups.rs', 'w') as fh:
     fh.write("&[\n")
-    for alg, oqsalg in kems:
-        fh.write(f"""NamedGroup::{oqsalg},\n""")
+    for alg, oqsalg, _ in kems:
+        fh.write(f"""NamedGroup::{alg.upper()},\n""")
     fh.write("""    NamedGroup::X25519,
     NamedGroup::secp384r1,
     NamedGroup::secp256r1,
@@ -45,8 +45,8 @@ enum_builder! {
         FFDHE6144 => 0x0103,
         FFDHE8192 => 0x0104,
 """)
-    for id, (alg, oqsalg) in enumerate(kems, start=0x01fc):
-        fh.write(f"        {oqsalg} => 0x{id:04x},\n")
+    for id, (alg, oqsalg, _) in enumerate(kems, start=0x01fc):
+        fh.write(f"        {alg.upper()} => 0x{id:04x},\n")
     fh.write("""    }
 }
 """)
@@ -97,7 +97,7 @@ enum_builder! {
 """)
     for id, (alg, oqsalg) in enumerate(signs, start=0xfe00):
         fh.write(f"        {alg.upper()} => 0x{id:04x},\n")
-    for id, (alg, oqsalg) in enumerate(kems, start=0xfe00 + len(signs)):
+    for id, (alg, oqsalg, _) in enumerate(kems, start=0xfe00 + len(signs)):
         fh.write(f"        KEMTLS_{alg.upper()} => 0x{id:04x},\n")
     fh.write("""
     }
@@ -113,7 +113,7 @@ with open("rustls/src/generated/supported_sign_tls13.rs", "w") as fh:
     fh.write("    SignatureScheme::ED25519,\n")
     for alg, oqsalg in signs:
         fh.write(f"    SignatureScheme::{alg.upper()},\n")
-    for alg, oqsalg in kems:
+    for alg, oqsalg, _ in kems:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()},\n")
     fh.write("]")
 
@@ -135,7 +135,7 @@ with open("rustls/src/generated/sigscheme_to_oqsalg.rs", "w") as fh:
 
 with open("rustls/src/generated/kemscheme_to_oqsalg.rs", "w") as fh:
     fh.write("match scheme {\n")
-    for alg, oqsalg in kems:
+    for alg, oqsalg, _ in kems:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()} => oqs::kem::Algorithm::{oqsalg},\n")
     fh.write("    _ => unreachable!(),")
     fh.write("}")
@@ -148,11 +148,11 @@ with open("rustls/src/generated/pq_sigschemes.rs", "w") as fh:
 
 with open("rustls/src/generated/pq_kemschemes.rs", "w") as fh:
     fh.write("&[\n")
-    for alg, oqsalg in kems:
+    for alg, oqsalg, _ in kems:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()},\n")
     fh.write("]")
 
-for alg, oqsalg in signs + kems:
+for alg, oqsalg in signs + [kem[:2] for kem in kems]:
     input_str = f"OBJECT_IDENTIFIER {{ {get_oid(alg)} }}\n"
     subprocess.run(
         ["../mk-cert/ascii2der", "-o", f"rustls/src/generated/data/alg-{alg}.der"],
@@ -164,7 +164,7 @@ with open("rustls/src/generated/scheme_to_oid.rs", "w") as fh:
     fh.write("match scheme {\n")
     for alg, _ in signs:
         fh.write(f"    SignatureScheme::{alg.upper()} => include_bytes!(\"data/alg-{alg}.der\"),\n")
-    for alg, _ in kems:
+    for alg, _, _ in kems:
         fh.write(f"    SignatureScheme::KEMTLS_{alg.upper()} => include_bytes!(\"data/alg-{alg}.der\"),\n")
     fh.write("    _ => unreachable!(),")
     fh.write("}")
