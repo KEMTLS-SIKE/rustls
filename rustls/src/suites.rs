@@ -13,7 +13,7 @@ use std::fmt;
 
 pub enum KexAlgorithm {
     RingAlg(&'static ring::agreement::Algorithm),
-    KEM(oqs::kem::Kem),
+    KEM(oqs::kem::Kem, bool),
 }
 
 
@@ -125,11 +125,13 @@ impl KeyExchange {
         let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
         match alg {
             KexAlgorithm::RingAlg(alg) => Self::start_ecdhe(named_group, alg),
-            KexAlgorithm::KEM(kem) => {
-                let (pk, sk) = kem.keypair().unwrap();
+            KexAlgorithm::KEM(kem, asynchronous) => {
+                let (pk, sk) = 
+                    if !asynchronous { kem.keypair().unwrap() }
+                    else { kem.keypair_async().unwrap() };
                 Some(KeyExchange {
                     group: named_group,
-                    alg: KexAlgorithm::KEM(kem),
+                    alg: KexAlgorithm::KEM(kem, asynchronous),
                     privkey: KexPrivateKey::KEM(sk),
                     pubkey: KexPublicKey::KEM(pk),
                 })
@@ -150,7 +152,7 @@ impl KeyExchange {
                     shared_secret,
                 })
             },
-            KexAlgorithm::KEM(kem) => {
+            KexAlgorithm::KEM(kem, _) => {
                 let pk = kem.public_key_from_bytes(peer)?;
                 let (ciphertext, shared_secret) = kem.encapsulate(pk).ok()?;
                 Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: shared_secret.into_vec()})
@@ -223,7 +225,7 @@ impl KeyExchange {
 
                 Some(secret.unwrap())
             }
-            KexAlgorithm::KEM(kem) => {
+            KexAlgorithm::KEM(kem, _) => {
                 let sk = self.privkey.into_kem_key();
                 let ct = kem.ciphertext_from_bytes(peer)?;
                 Some(kem.decapsulate(&sk, ct).ok()?.into_vec())

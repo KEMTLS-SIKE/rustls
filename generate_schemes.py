@@ -10,7 +10,14 @@ with open('rustls/src/generated/named_group_to_kex.rs', 'w') as fh:
         NamedGroup::{alg.upper()} => {{
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::{oqsalg}).unwrap();
-            Some(KexAlgorithm::KEM(kem))
+""")
+        if asynchronous:
+            fh.write(f"""
+            kem.init().ok()?;
+""")
+
+        fh.write(f"""
+            Some(KexAlgorithm::KEM(kem, {'true' if asynchronous else 'false'}))
         }},
 """)
     fh.write("_ => None,\n}")
