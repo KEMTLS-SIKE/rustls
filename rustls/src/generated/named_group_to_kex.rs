@@ -242,7 +242,7 @@ match group {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP434Compressed).unwrap();
 
-            kem.init().ok()?;
+            let _res = kem.init();
 
             Some(KexAlgorithm::KEM(kem, true))
         },
@@ -265,7 +265,7 @@ match group {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP503Compressed).unwrap();
 
-            kem.init().ok()?;
+            let _res = kem.init();
 
             Some(KexAlgorithm::KEM(kem, true))
         },
@@ -288,7 +288,7 @@ match group {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP610Compressed).unwrap();
 
-            kem.init().ok()?;
+            let _res = kem.init();
 
             Some(KexAlgorithm::KEM(kem, true))
         },
@@ -311,7 +311,7 @@ match group {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP751Compressed).unwrap();
 
-            kem.init().ok()?;
+            let _res = kem.init();
 
             Some(KexAlgorithm::KEM(kem, true))
         },
