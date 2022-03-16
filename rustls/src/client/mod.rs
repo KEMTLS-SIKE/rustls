@@ -32,6 +32,8 @@ mod common;
 pub mod handy;
 mod default_group;
 
+use oqs;
+
 /// A trait for the ability to store client session data.
 /// The keys and values are opaque.
 ///
@@ -139,6 +141,12 @@ pub struct ClientConfig {
 
     /// RFC 7924
     pub known_certificates: Vec<key::Certificate>,
+}
+
+impl Drop for ClientConfig {
+    fn drop(&mut self) {
+        oqs::sike_deinit();
+    }
 }
 
 impl Default for ClientConfig {

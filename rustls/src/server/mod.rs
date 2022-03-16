@@ -26,6 +26,8 @@ mod tls13;
 mod common;
 pub mod handy;
 
+use oqs;
+
 /// A trait for the ability to store server session data.
 ///
 /// The keys and values are opaque.
@@ -184,6 +186,12 @@ pub struct ServerConfig {
     #[cfg(feature = "quic")]    // TLS support unimplemented
     #[doc(hidden)]
     pub max_early_data_size: u32,
+}
+
+impl Drop for ServerConfig {
+    fn drop(&mut self) {
+        oqs::sike_deinit();
+    }
 }
 
 impl ServerConfig {
