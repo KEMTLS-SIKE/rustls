@@ -186,6 +186,9 @@ pub struct ServerConfig {
     #[cfg(feature = "quic")]    // TLS support unimplemented
     #[doc(hidden)]
     pub max_early_data_size: u32,
+
+    /// Optimize SIKE encapsulation with async computations.
+    pub async_encapsulation: bool,
 }
 
 impl Drop for ServerConfig {
@@ -240,6 +243,7 @@ impl ServerConfig {
             key_log: Arc::new(NoKeyLog {}),
             #[cfg(feature = "quic")]
             max_early_data_size: 0,
+            async_encapsulation: false,
         }
     }
 

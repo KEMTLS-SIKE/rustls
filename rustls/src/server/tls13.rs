@@ -138,7 +138,11 @@ impl CompleteClientHelloHandling {
 
         // Do key exchange
         self.handshake.print_runtime("ENCAPSULATING TO EPHEMERAL");
-        let kxr = suites::KeyExchange::encapsulate(share.group,&share.payload.0)
+        let kxr = if sess.config.async_encapsulation {
+                suites::KeyExchange::async_encapsulate(share.group,&share.payload.0)
+            } else {
+                suites::KeyExchange::encapsulate(share.group,&share.payload.0)
+            }
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
         self.handshake.print_runtime("ENCAPSULATED TO EPHEMERAL");            
 

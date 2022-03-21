@@ -423,30 +423,31 @@ Usage:
   tlsserver (--help | -h)
 
 Options:
-    -p, --port PORT     Listen on PORT [default: 443].
-    --certs CERTFILE    Read server certificates from CERTFILE.
-                        This should contain PEM-format certificates
-                        in the right order (the first certificate should
-                        certify KEYFILE, the last should be a root CA).
-    --key KEYFILE       Read private key from KEYFILE.  This should be a RSA
-                        private key or PKCS8-encoded private key, in PEM format.
-    --ocsp OCSPFILE     Read DER-encoded OCSP response from OCSPFILE and staple
-                        to certificate.  Optional.
-    --auth CERTFILE     Enable client authentication, and accept certificates
-                        signed by those roots provided in CERTFILE.
-    --require-auth      Send a fatal alert if the client does not complete client
-                        authentication.
-    --resumption        Support session resumption.
-    --tickets           Support tickets.
-    --protover VERSION  Disable default TLS version list, and use
-                        VERSION instead.  May be used multiple times.
-    --suite SUITE       Disable default cipher suite list, and use
-                        SUITE instead.  May be used multiple times.
-    --proto PROTOCOL    Negotiate PROTOCOL using ALPN.
-                        May be used multiple times.
-    --verbose           Emit log output.
-    --version, -v       Show tool version.
-    --help, -h          Show this screen.
+    -p, --port PORT         Listen on PORT [default: 443].
+    --certs CERTFILE        Read server certificates from CERTFILE.
+                            This should contain PEM-format certificates
+                            in the right order (the first certificate should
+                            certify KEYFILE, the last should be a root CA).
+    --key KEYFILE           Read private key from KEYFILE.  This should be a RSA
+                            private key or PKCS8-encoded private key, in PEM format.
+    --ocsp OCSPFILE         Read DER-encoded OCSP response from OCSPFILE and staple
+                            to certificate.  Optional.
+    --auth CERTFILE         Enable client authentication, and accept certificates
+                            signed by those roots provided in CERTFILE.
+    --require-auth          Send a fatal alert if the client does not complete client
+                            authentication.
+    --resumption            Support session resumption.
+    --tickets               Support tickets.
+    --protover VERSION      Disable default TLS version list, and use
+                            VERSION instead.  May be used multiple times.
+    --suite SUITE           Disable default cipher suite list, and use
+                            SUITE instead.  May be used multiple times.
+    --proto PROTOCOL        Negotiate PROTOCOL using ALPN.
+                            May be used multiple times.
+    --async-encapsulation   Activate async encapsulation optimization.
+    --verbose               Emit log output.
+    --version, -v           Show tool version.
+    --help, -h              Show this screen.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -466,6 +467,7 @@ struct Args {
     flag_require_auth: bool,
     flag_resumption: bool,
     flag_tickets: bool,
+    flag_async_encapsulation: bool,
     arg_fport: Option<u16>,
 }
 
@@ -614,6 +616,8 @@ fn make_config(args: &Args) -> Arc<rustls::ServerConfig> {
             .map(|proto| proto.as_bytes().to_vec())
             .collect::<Vec<_>>()[..],
     );
+
+    config.async_encapsulation = args.flag_async_encapsulation;
 
     Arc::new(config)
 }

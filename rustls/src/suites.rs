@@ -160,6 +160,21 @@ impl KeyExchange {
         }
     }
 
+    // Async encapsulates to the server's share
+    pub fn async_encapsulate(named_group: NamedGroup, peer: &[u8]) -> Option<KeyExchangeResult> {
+        let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
+        match alg {
+            KexAlgorithm::KEM(kem, _) => {
+                let pk = kem.public_key_from_bytes(peer)?;
+                let (ciphertext, shared_secret) = kem.async_encapsulate(pk).ok()?;
+                Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: shared_secret.into_vec()})
+            },
+            _ => {
+                None
+            }
+        }
+    }
+
     fn start_ecdhe(
         named_group: NamedGroup,
         alg: &'static ring::agreement::Algorithm,
