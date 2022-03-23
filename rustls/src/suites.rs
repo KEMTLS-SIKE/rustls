@@ -121,17 +121,17 @@ impl KeyExchange {
     }
 
     // Generate's the public key keyshare
-    pub fn start_kex(named_group: NamedGroup) -> Option<KeyExchange> {
+    pub fn start_kex(named_group: NamedGroup, keypair_async: bool) -> Option<KeyExchange> {
         let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
         match alg {
             KexAlgorithm::RingAlg(alg) => Self::start_ecdhe(named_group, alg),
-            KexAlgorithm::KEM(kem, asynchronous) => {
+            KexAlgorithm::KEM(kem) => {
                 let (pk, sk) = 
-                    if !asynchronous { kem.keypair().unwrap() }
-                    else { kem.keypair_async().unwrap() };
+                    if !keypair_async { kem.keypair().unwrap() }
+                    else { kem.init().ok()?; kem.keypair_async().unwrap() };
                 Some(KeyExchange {
                     group: named_group,
-                    alg: KexAlgorithm::KEM(kem, asynchronous),
+                    alg: KexAlgorithm::KEM(kem),
                     privkey: KexPrivateKey::KEM(sk),
                     pubkey: KexPublicKey::KEM(pk),
                 })
@@ -152,7 +152,7 @@ impl KeyExchange {
                     shared_secret,
                 })
             },
-            KexAlgorithm::KEM(kem, _) => {
+            KexAlgorithm::KEM(kem) => {
                 let pk = kem.public_key_from_bytes(peer)?;
                 let (ciphertext, shared_secret) = kem.encapsulate(pk).ok()?;
                 Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: shared_secret.into_vec()})
@@ -164,7 +164,7 @@ impl KeyExchange {
     pub fn async_encapsulate(named_group: NamedGroup, peer: &[u8]) -> Option<KeyExchangeResult> {
         let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
         match alg {
-            KexAlgorithm::KEM(kem, _) => {
+            KexAlgorithm::KEM(kem) => {
                 let pk = kem.public_key_from_bytes(peer)?;
                 let (ciphertext, shared_secret) = kem.async_encapsulate(pk).ok()?;
                 Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: shared_secret.into_vec()})
@@ -335,7 +335,7 @@ impl SupportedCipherSuite {
     /// Not used in TLS 1.3
     pub fn start_server_kx(&self, named_group: NamedGroup) -> Option<KeyExchange> {
         match self.kx {
-            KeyExchangeAlgorithm::ECDHE => KeyExchange::start_kex(named_group),
+            KeyExchangeAlgorithm::ECDHE => KeyExchange::start_kex(named_group, false),
             _ => None,
         }
     }

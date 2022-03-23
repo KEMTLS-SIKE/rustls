@@ -326,6 +326,7 @@ Options:
     --insecure            Disable certificate verification.
     --verbose             Emit log output.
     --mtu MTU             Limit outgoing messages to MTU bytes.
+    --async-keypair       Generate keypairs asynchronously.
     --version, -v         Show tool version.
     --help, -h            Show this screen.
 ";
@@ -349,6 +350,7 @@ struct Args {
     flag_auth_certs: Option<String>,
     arg_hostname: String,
     flag_loops: Option<usize>,
+    flag_async_keypair: bool,
 }
 
 // TODO: um, well, it turns out that openssl s_client/s_server
@@ -554,6 +556,8 @@ fn make_config(args: &Args) -> Arc<rustls::ClientConfig> {
                 .expect("must provide --auth-certs with --auth-key"),
         );
     }
+
+    config.async_keypair = args.flag_async_keypair;
 
     Arc::new(config)
 }

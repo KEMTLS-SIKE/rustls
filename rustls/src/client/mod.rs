@@ -141,6 +141,12 @@ pub struct ClientConfig {
 
     /// RFC 7924
     pub known_certificates: Vec<key::Certificate>,
+
+    /// Whether to generate keypairs asynchronously.
+    ///
+    /// The default is false.
+    pub async_keypair: bool,
+    
 }
 
 impl Drop for ClientConfig {
@@ -184,6 +190,7 @@ impl ClientConfig {
             key_log: Arc::new(NoKeyLog {}),
             enable_early_data: false,
             known_certificates: Vec::new(),
+            async_keypair: false,
         }
     }
 

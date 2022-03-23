@@ -119,7 +119,7 @@ pub fn choose_kx_groups(sess: &mut ClientSessionImpl,
             continue;
         }
 
-        if let Some(key_share) = suites::KeyExchange::start_kex(group) {
+        if let Some(key_share) = suites::KeyExchange::start_kex(group, sess.config.async_keypair) {
             key_shares.push(KeyShareEntry::new(group, key_share.pubkey.as_ref()));
             hello.offered_key_shares.push(key_share);
         }
