@@ -13,7 +13,7 @@ use std::fmt;
 
 pub enum KexAlgorithm {
     RingAlg(&'static ring::agreement::Algorithm),
-    KEM(oqs::kem::Kem, bool),
+    KEM(oqs::kem::Kem),
 }
 
 
@@ -240,7 +240,7 @@ impl KeyExchange {
 
                 Some(secret.unwrap())
             }
-            KexAlgorithm::KEM(kem, _) => {
+            KexAlgorithm::KEM(kem) => {
                 let sk = self.privkey.into_kem_key();
                 let ct = kem.ciphertext_from_bytes(peer)?;
                 Some(kem.decapsulate(&sk, ct).ok()?.into_vec())
