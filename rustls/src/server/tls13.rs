@@ -886,12 +886,12 @@ fn emit_finished_kemtlspdk(
     handshake.print_runtime("WRITING TO CLIENT");
     //sess.common.start_traffic(); // breaks
 
-    #[cfg(feature = "quic")] {
-        sess.common.quic.traffic_secrets = Some(quic::Secrets {
-            client: _read_key,
-            server: write_key,
-        });
-    }
+    // #[cfg(feature = "quic")] {
+    //     sess.common.quic.traffic_secrets = Some(quic::Secrets {
+    //         client: _read_key,
+    //         server: write_key,
+    //     });
+    // }
 
     key_schedule
 }
