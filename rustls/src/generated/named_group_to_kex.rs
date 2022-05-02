@@ -238,6 +238,13 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
+        NamedGroup::SIKEP434COMPRESSED1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP434Compressed1CCA).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
         NamedGroup::SIKEP503 => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP503).unwrap();
@@ -248,6 +255,13 @@ match group {
         NamedGroup::SIKEP503COMPRESSED => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP503Compressed).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::SIKEP503COMPRESSED1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP503Compressed1CCA).unwrap();
 
             Some(KexAlgorithm::KEM(kem))
         },
@@ -266,6 +280,13 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
+        NamedGroup::SIKEP610COMPRESSED1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP610Compressed1CCA).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
         NamedGroup::SIKEP751 => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP751).unwrap();
@@ -276,6 +297,13 @@ match group {
         NamedGroup::SIKEP751COMPRESSED => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP751Compressed).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::SIKEP751COMPRESSED1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::SikeP751Compressed1CCA).unwrap();
 
             Some(KexAlgorithm::KEM(kem))
         },
