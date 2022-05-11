@@ -30,7 +30,7 @@ mod tls12;
 mod tls13;
 mod common;
 pub mod handy;
-mod default_group;
+pub mod default_group;
 
 use oqs;
 

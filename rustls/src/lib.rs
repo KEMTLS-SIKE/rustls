@@ -196,7 +196,7 @@
           unstable_features)]
 #![deny(trivial_casts,
         trivial_numeric_casts,
-        missing_docs,
+        // missing_docs,
         unused_import_braces,
         unused_extern_crates,
         unused_qualifications)]
@@ -253,6 +253,7 @@ mod keylog;
 
 /// Internal classes which may be useful outside the library.
 /// The contents of this section DO NOT form part of the stable interface.
+#[allow(missing_docs)]
 pub mod internal {
     /// Functions for parsing PEM files containing certificates/keys.
     pub mod pemfile {
@@ -262,6 +263,12 @@ pub mod internal {
     /// Low-level TLS message parsing and encoding functions.
     pub mod msgs {
         pub use crate::msgs::*;
+    }
+
+    /// Low-level TLS message parsing and encoding functions.
+    pub mod kems {
+        pub use crate::client::default_group::DEFAULT_GROUP as DEFAULT_GROUP;
+        pub use crate::suites::{KeyExchange,KexAlgorithm};
     }
 }
 
