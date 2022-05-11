@@ -189,6 +189,9 @@ pub struct ServerConfig {
 
     /// Optimize SIKE encapsulation with async computations.
     pub async_encapsulation: bool,
+
+    /// Optimize SIKE encapsulation by deferring costly computations.
+    pub split_encapsulation: bool,
 }
 
 impl Drop for ServerConfig {
@@ -244,6 +247,7 @@ impl ServerConfig {
             #[cfg(feature = "quic")]
             max_early_data_size: 0,
             async_encapsulation: false,
+            split_encapsulation: false,
         }
     }
 

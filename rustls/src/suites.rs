@@ -175,6 +175,38 @@ impl KeyExchange {
         }
     }
 
+    // First split encapsulate (ciphertext) to the server's share
+    pub fn encapsulate_ciphertext(named_group: NamedGroup, peer: &[u8]) -> Option<KeyExchangeResult> {
+        let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
+        match alg {
+            KexAlgorithm::KEM(kem) => {
+                let pk = kem.public_key_from_bytes(peer)?;
+                let (ciphertext, ephemeral_secret) = kem.encapsulate_ciphertext(pk).ok()?;
+                Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: ephemeral_secret.into_vec()})
+            },
+            _ => {
+                None
+            }
+        }
+    }
+
+    // Second split encapsulate (share secret) to the server's share
+    pub fn encapsulate_shared_secret(named_group: NamedGroup, peer: &[u8], key_exchange_result: KeyExchangeResult) -> Option<KeyExchangeResult> {
+        let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
+        match alg {
+            KexAlgorithm::KEM(kem) => {
+                let pk = kem.public_key_from_bytes(peer)?;
+                let ciphertext_ref = kem.ciphertext_from_bytes(&key_exchange_result.ciphertext)?;
+                let ephemeral_secret = kem.ephemeral_secret_from_bytes(&key_exchange_result.shared_secret)?;
+                let shared_secret = kem.encapsulate_shared_secret(ciphertext_ref, ephemeral_secret, pk).ok()?;
+                Some(KeyExchangeResult {ciphertext: key_exchange_result.ciphertext, shared_secret: shared_secret.into_vec()})
+            },
+            _ => {
+                None
+            }
+        }
+    }
+
     fn start_ecdhe(
         named_group: NamedGroup,
         alg: &'static ring::agreement::Algorithm,

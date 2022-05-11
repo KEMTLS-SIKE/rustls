@@ -138,7 +138,9 @@ impl CompleteClientHelloHandling {
 
         // Do key exchange
         self.handshake.print_runtime("ENCAPSULATING TO EPHEMERAL");
-        let kxr = if sess.config.async_encapsulation {
+        let mut kxr = if sess.config.split_encapsulation {
+                suites::KeyExchange::encapsulate_ciphertext(share.group, &share.payload.0)
+            } else if sess.config.async_encapsulation {
                 suites::KeyExchange::async_encapsulate(share.group,&share.payload.0)
             } else {
                 suites::KeyExchange::encapsulate(share.group,&share.payload.0)
@@ -184,6 +186,12 @@ impl CompleteClientHelloHandling {
         self.handshake.transcript.add_message(&sh);
         sess.common.send_msg(sh, false);
         self.handshake.print_runtime("EMITTED SH");
+
+        // If necessary, compute deferred part of encapsulation
+        if sess.config.split_encapsulation {
+            kxr = suites::KeyExchange::encapsulate_shared_secret(share.group, &share.payload.0, kxr)
+                .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
+        }
 
         // Start key schedule
         let suite = sess.common.get_suite_assert();
