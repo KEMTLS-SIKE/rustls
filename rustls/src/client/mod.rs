@@ -32,8 +32,6 @@ mod common;
 pub mod handy;
 pub mod default_group;
 
-use oqs;
-
 /// A trait for the ability to store client session data.
 /// The keys and values are opaque.
 ///
@@ -147,12 +145,6 @@ pub struct ClientConfig {
     /// The default is false.
     pub async_keypair: bool,
     
-}
-
-impl Drop for ClientConfig {
-    fn drop(&mut self) {
-        oqs::sike_deinit();
-    }
 }
 
 impl Default for ClientConfig {

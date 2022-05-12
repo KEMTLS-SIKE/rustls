@@ -26,8 +26,6 @@ mod tls13;
 mod common;
 pub mod handy;
 
-use oqs;
-
 /// A trait for the ability to store server session data.
 ///
 /// The keys and values are opaque.
@@ -192,12 +190,6 @@ pub struct ServerConfig {
 
     /// Optimize SIKE encapsulation by deferring costly computations.
     pub split_encapsulation: bool,
-}
-
-impl Drop for ServerConfig {
-    fn drop(&mut self) {
-        oqs::sike_deinit();
-    }
 }
 
 impl ServerConfig {
