@@ -59,7 +59,8 @@ pub trait Session: quic::QuicExt + Read + Write + Send + Sync {
     ///
     /// Success from this function can mean new plaintext is available:
     /// obtain it using `read`.
-    fn process_new_packets(&mut self) -> Result<(), TLSError>;
+    fn process_new_packets(&mut self, flush_to: Option<&mut dyn Write>) 
+        -> Result<(), TLSError>;
 
     /// Returns true if the caller should call `read_tls` as soon
     /// as possible.
@@ -183,7 +184,7 @@ pub trait Session: quic::QuicExt + Read + Write + Send + Sync {
                 }
             }
 
-            match self.process_new_packets() {
+            match self.process_new_packets(None) {
                 Ok(_) => {},
                 Err(e) => {
                     // In case we have an alert to send describing this error,

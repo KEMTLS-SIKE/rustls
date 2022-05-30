@@ -30,12 +30,12 @@ pub struct ExpectCertificate {
 
 impl ExpectCertificate {
     fn into_expect_tls12_client_kx(self, cert: Option<ClientCertDetails>) -> hs::NextState {
-        Box::new(ExpectClientKX {
+        hs::NextState::FullState( Box::new(ExpectClientKX {
             handshake: self.handshake,
             server_kx: self.server_kx,
             client_cert: cert,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 }
 
@@ -85,21 +85,21 @@ pub struct ExpectClientKX {
 
 impl ExpectClientKX {
     fn into_expect_tls12_certificate_verify(self, secrets: SessionSecrets) -> hs::NextState {
-        Box::new(ExpectCertificateVerify {
+        hs::NextState::FullState( Box::new(ExpectCertificateVerify {
             secrets,
             handshake: self.handshake,
             client_cert: self.client_cert.unwrap(),
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn into_expect_tls12_ccs(self, secrets: SessionSecrets) -> hs::NextState {
-        Box::new(ExpectCCS {
+        hs::NextState::FullState( Box::new(ExpectCCS {
             secrets,
             handshake: self.handshake,
             resuming: false,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 }
 
@@ -155,12 +155,12 @@ pub struct ExpectCertificateVerify {
 
 impl ExpectCertificateVerify {
     fn into_expect_tls12_ccs(self) -> hs::NextState {
-        Box::new(ExpectCCS {
+        hs::NextState::FullState( Box::new(ExpectCCS {
             secrets: self.secrets,
             handshake: self.handshake,
             resuming: false,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 }
 
@@ -199,12 +199,12 @@ pub struct ExpectCCS {
 
 impl ExpectCCS {
     fn into_expect_tls12_finished(self) -> hs::NextState {
-        Box::new(ExpectFinished {
+        hs::NextState::FullState( Box::new(ExpectFinished {
             secrets: self.secrets,
             handshake: self.handshake,
             resuming: self.resuming,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 }
 
@@ -313,10 +313,10 @@ pub struct ExpectFinished {
 
 impl ExpectFinished {
     fn into_expect_tls12_traffic(self, fin: verify::FinishedMessageVerified) -> hs::NextState {
-        Box::new(ExpectTraffic {
+        hs::NextState::FullState( Box::new(ExpectTraffic {
             secrets: self.secrets,
             _fin_verified: fin,
-        })
+        }))
     }
 }
 
@@ -382,7 +382,7 @@ impl hs::State for ExpectTraffic {
     fn handle(self: Box<Self>, sess: &mut ServerSessionImpl, mut m: Message) -> hs::NextStateOrError {
         check_message(&m, &[ContentType::ApplicationData], &[])?;
         sess.common.take_received_plaintext(m.take_opaque_payload().unwrap());
-        Ok(self)
+        Ok(hs::NextState::FullState(self))
     }
 
     fn export_keying_material(&self,

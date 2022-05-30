@@ -31,8 +31,16 @@ use crate::session::Protocol;
 use crate::server::common::{HandshakeDetails, ServerKXDetails};
 use crate::server::{tls12, tls13};
 
-pub type NextState = Box<dyn State + Send + Sync>;
+pub enum NextState {
+    IntermediaryState(Box<dyn IntermediaryState + Send + Sync>),
+    FullState(Box<dyn State + Send + Sync>),
+}
+
 pub type NextStateOrError = Result<NextState, TLSError>;
+
+pub trait IntermediaryState {
+    fn handle(self: Box<Self>, sess: &mut ServerSessionImpl) -> NextStateOrError;
+}
 
 pub trait State {
     fn handle(self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> NextStateOrError;
@@ -313,12 +321,12 @@ impl ExpectClientHello {
     }
 
     fn into_expect_tls12_ccs(self, secrets: SessionSecrets) -> NextState {
-        Box::new(tls12::ExpectCCS {
+        NextState::FullState(Box::new(tls12::ExpectCCS {
             secrets,
             handshake: self.handshake,
             resuming: true,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn into_complete_tls13_client_hello_handling(self) -> tls13::CompleteClientHelloHandling {
@@ -332,20 +340,20 @@ impl ExpectClientHello {
     }
 
     fn into_expect_tls12_certificate(self, kx: suites::KeyExchange) -> NextState {
-        Box::new(tls12::ExpectCertificate {
+        NextState::FullState(Box::new(tls12::ExpectCertificate {
             handshake: self.handshake,
             server_kx: ServerKXDetails::new(kx),
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn into_expect_tls12_client_kx(self, kx: suites::KeyExchange) -> NextState {
-        Box::new(tls12::ExpectClientKX {
+        NextState::FullState(Box::new(tls12::ExpectClientKX {
             handshake: self.handshake,
             server_kx: ServerKXDetails::new(kx),
             client_cert: None,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn emit_server_hello(&mut self,

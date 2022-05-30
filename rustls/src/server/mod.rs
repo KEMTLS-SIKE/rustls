@@ -386,7 +386,7 @@ impl ServerSessionImpl {
         self.common.set_buffer_limit(len)
     }
 
-    pub fn process_msg(&mut self, mut msg: Message) -> Result<(), TLSError> {
+    pub fn process_msg(&mut self, mut msg: Message, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         // TLS1.3: drop CCS at any time during handshaking
         if let MiddleboxCCS::Drop = self.common.filter_tls13_ccs(&msg)? {
             trace!("Dropping CCS");
@@ -407,7 +407,7 @@ impl ServerSessionImpl {
                             self.common.send_fatal_alert(AlertDescription::DecodeError);
                             TLSError::CorruptMessagePayload(ContentType::Handshake)
                             })?;
-            return self.process_new_handshake_messages();
+            return self.process_new_handshake_messages(flush_to);
         }
 
         // Now we can fully parse the message payload.
@@ -417,12 +417,12 @@ impl ServerSessionImpl {
             return self.common.process_alert(msg);
         }
 
-        self.process_main_protocol(msg)
+        self.process_main_protocol(msg, flush_to)
     }
 
-    pub fn process_new_handshake_messages(&mut self) -> Result<(), TLSError> {
+    pub fn process_new_handshake_messages(&mut self, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         while let Some(msg) = self.common.handshake_joiner.frames.pop_front() {
-            self.process_main_protocol(msg)?;
+            self.process_main_protocol(msg, flush_to)?;
         }
 
         Ok(())
@@ -443,22 +443,46 @@ impl ServerSessionImpl {
         rc
     }
 
-    pub fn process_main_protocol(&mut self, msg: Message) -> Result<(), TLSError> {
+    pub fn process_main_protocol(&mut self, msg: Message, mut flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         if self.common.traffic && !self.common.is_tls13() &&
            msg.is_handshake_type(HandshakeType::ClientHello) {
             self.common.send_warning_alert(AlertDescription::NoRenegotiation);
             return Ok(());
         }
 
+        // First iteration
         let state = self.state.take().unwrap();
         let maybe_next_state = state.handle(self, msg);
-        let next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
-        self.state = Some(next_state);
+        let mut next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
 
-        Ok(())
+        loop {
+            match next_state {
+                hs::NextState::FullState(s) => {
+                    self.state = Some(s);
+
+                    return Ok(())
+                },
+                hs::NextState::IntermediaryState(s) => {
+                    // Continue processing messages
+                    let state = s;
+                    let maybe_next_state = state.handle(self);
+                    next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
+
+                    if let Some(socket) = flush_to {
+                        let rc = self.common.write_tls(socket);
+                        if rc.is_err() {
+                            // TODO: Change error
+                            return Err(TLSError::CorruptMessage);
+                        }
+
+                        flush_to = Some(socket)
+                    }
+                }
+            }
+        }
     }
 
-    pub fn process_new_packets(&mut self) -> Result<(), TLSError> {
+    pub fn process_new_packets(&mut self, mut flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         if let Some(ref err) = self.error {
             return Err(err.clone());
         }
@@ -467,12 +491,18 @@ impl ServerSessionImpl {
             return Err(TLSError::CorruptMessage);
         }
 
+        // let r = flush_to.as_deref_mut();
+
         while let Some(msg) = self.common.message_deframer.frames.pop_front() {
-            match self.process_msg(msg) {
+            // let rc 
+            match self.process_msg(msg, (&mut flush_to).as_deref_mut()) {//flush_to.as_deref_mut()) {
                 Ok(_) => {}
                 Err(err) => {
-                    self.error = Some(err.clone());
-                    return Err(err);
+
+                                                return Err(TLSError::CorruptMessage);
+
+                    // self.error = Some(err.clone());
+                    // return Err(err);
                 }
             }
 
@@ -607,8 +637,8 @@ impl Session for ServerSession {
         self.imp.common.write_tls(wr)
     }
 
-    fn process_new_packets(&mut self) -> Result<(), TLSError> {
-        self.imp.process_new_packets()
+    fn process_new_packets(&mut self, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
+        self.imp.process_new_packets(flush_to)
     }
 
     fn wants_read(&self) -> bool {

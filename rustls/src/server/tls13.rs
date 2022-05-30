@@ -86,34 +86,34 @@ impl CompleteClientHelloHandling {
     }
 
     fn into_expect_retried_client_hello(self) -> hs::NextState {
-        Box::new(hs::ExpectClientHello {
+        hs::NextState::FullState(Box::new(hs::ExpectClientHello {
             handshake: self.handshake,
             done_retry: true,
             send_cert_status: self.send_cert_status,
             send_sct: self.send_sct,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn into_expect_certificate(self, key_schedule: ExpectCertificateKeySchedule) -> hs::NextState {
-        Box::new(ExpectCertificate {
+        hs::NextState::FullState( Box::new(ExpectCertificate {
             handshake: self.handshake,
             key_schedule,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn into_expect_finished(self, key_schedule: KeyScheduleTrafficWithClientFinishedPending, is_pdk: bool) -> hs::NextState {
-        Box::new(ExpectFinished {
+        hs::NextState::FullState( Box::new(ExpectFinished {
             handshake: self.handshake,
             key_schedule,
             send_ticket: self.send_ticket,
             is_pdk,
-        })
+        }))
     }
 
     fn into_expect_ciphertext(self, key_schedule: KeyScheduleHandshake, server_key: sign::CertifiedKey, client_auth: bool) -> hs::NextState {
-        Box::new(
+        hs::NextState::FullState( Box::new(
             ExpectCiphertext {
                 handshake: self.handshake,
                 server_key,
@@ -121,7 +121,7 @@ impl CompleteClientHelloHandling {
                 client_auth,
                 send_ticket: self.send_ticket,
             }
-        )
+        ))
     }
 
     fn emit_server_hello(&mut self,
@@ -666,7 +666,7 @@ impl CompleteClientHelloHandling {
         }
 
         if pdk_client_auth {
-            Ok(Box::new(ExpectPDKCertificate {
+            Ok(hs::NextState::FullState(Box::new(ExpectPDKCertificate {
                 expect_hello: self,
                 client_hello: client_hello.to_owned(),
                 server_key,
@@ -679,7 +679,7 @@ impl CompleteClientHelloHandling {
                 full_handshake,
                 doing_pdk,
                 sigschemes_ext,
-            }))
+            })))
         } else {
             self.complete_handle_client_hello(sess, server_key, client_hello, maybe_key_schedule, chosen_share, chosen_psk_index, resumedata, proactive_ss_certificate_hash, pdk_client_auth, full_handshake, doing_pdk, sigschemes_ext, None)
         }
@@ -914,19 +914,19 @@ pub struct ExpectCiphertext {
 
 impl ExpectCiphertext {
     fn into_expect_certificate(self) -> hs::NextState {
-        Box::new(ExpectCertificate {
+        hs::NextState::FullState( Box::new(ExpectCertificate {
             handshake: self.handshake,
             key_schedule: ExpectCertificateKeySchedule::KEMTLS(self.key_schedule),
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn into_expect_finished(self) -> hs::NextState {
-        Box::new(ExpectKEMTLSFinished {
+        hs::NextState::FullState( Box::new(ExpectKEMTLSFinished {
             handshake: self.handshake,
             key_schedule: self.key_schedule.into_traffic_with_server_finished_pending(None),
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
 }
@@ -1018,22 +1018,22 @@ pub struct ExpectCertificate {
 impl ExpectCertificate {
     fn into_expect_finished(self) -> hs::NextState {
         let ks = self.key_schedule.tls13();
-        Box::new(ExpectFinished {
+        hs::NextState::FullState( Box::new(ExpectFinished {
             key_schedule: ks,
             handshake: self.handshake,
             send_ticket: self.send_ticket,
             is_pdk: false,
-        })
+        }))
     }
 
     fn into_expect_certificate_verify(self,
                                       cert: ClientCertDetails) -> hs::NextState {
-        Box::new(ExpectCertificateVerify {
+        hs::NextState::FullState( Box::new(ExpectCertificateVerify {
             handshake: self.handshake,
             key_schedule: self.key_schedule.tls13(),
             client_cert: cert,
             send_ticket: self.send_ticket,
-        })
+        }))
     }
 
     fn emit_ciphertext(&mut self, sess: &mut ServerSessionImpl, cert: ClientCertDetails) -> Result<SharedSecret, TLSError> {
@@ -1057,11 +1057,11 @@ impl ExpectCertificate {
     }
 
     fn into_expect_kemtls_finished(self, ss: SharedSecret) -> hs::NextStateOrError {
-        Ok(Box::new(ExpectKEMTLSFinished {
+        Ok(hs::NextState::FullState( Box::new(ExpectKEMTLSFinished {
             key_schedule: self.key_schedule.kemtls().into_traffic_with_server_finished_pending(Some(ss.as_ref())),
             send_ticket: false,
             handshake: self.handshake,
-        }))
+        })))
     }
 
 }
@@ -1126,12 +1126,12 @@ pub struct ExpectCertificateVerify {
 
 impl ExpectCertificateVerify {
     fn into_expect_finished(self) -> hs::NextState {
-        Box::new(ExpectFinished {
+        hs::NextState::FullState( Box::new(ExpectFinished {
             key_schedule: self.key_schedule,
             handshake: self.handshake,
             send_ticket: self.send_ticket,
             is_pdk: false,
-        })
+        }))
     }
 }
 
@@ -1277,11 +1277,11 @@ impl hs::State for ExpectKEMTLSFinished {
         self.handshake.print_runtime("HANDSHAKE COMPLETED");
         sess.common.start_traffic();
 
-        Ok(Box::new(ExpectTraffic {
+        Ok(hs::NextState::FullState( Box::new(ExpectTraffic {
             _fin_verified: fin,
             key_schedule: key_schedule_traffic,
             want_write_key_update: false,
-        }))
+        })))
     }
 }
 
@@ -1294,11 +1294,11 @@ pub struct ExpectFinished {
 
 impl ExpectFinished {
     fn into_expect_traffic(fin: verify::FinishedMessageVerified, ks: KeyScheduleTraffic) -> hs::NextState {
-        Box::new(ExpectTraffic {
+        hs::NextState::FullState( Box::new(ExpectTraffic {
             key_schedule: ks,
             want_write_key_update: false,
             _fin_verified: fin,
-        })
+        }))
     }
 }
 
@@ -1456,10 +1456,10 @@ impl hs::State for ExpectFinished {
 
         #[cfg(feature = "quic")] {
             if sess.common.protocol == Protocol::Quic {
-                return Ok(Box::new(ExpectQUICTraffic {
+                return Ok(hs::NextState::FullState(Box::new(ExpectQUICTraffic {
                     key_schedule: key_schedule_traffic,
                     _fin_verified: fin,
-                }));
+                })));
             }
         }
 
@@ -1525,7 +1525,7 @@ impl hs::State for ExpectTraffic {
                           &[HandshakeType::KeyUpdate])?;
         }
 
-        Ok(self)
+        Ok(hs::NextState::FullState(self))
     }
 
     fn export_keying_material(&self,

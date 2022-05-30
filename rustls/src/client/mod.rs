@@ -554,7 +554,7 @@ impl ClientSessionImpl {
         Ok(())
     }
 
-    pub fn process_new_packets(&mut self) -> Result<(), TLSError> {
+    pub fn process_new_packets(&mut self, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         if let Some(ref err) = self.error {
             return Err(err.clone());
         }
@@ -688,8 +688,8 @@ impl Session for ClientSession {
         self.imp.common.write_tls(wr)
     }
 
-    fn process_new_packets(&mut self) -> Result<(), TLSError> {
-        self.imp.process_new_packets()
+    fn process_new_packets(&mut self, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
+        self.imp.process_new_packets(flush_to)
     }
 
     fn wants_read(&self) -> bool {
