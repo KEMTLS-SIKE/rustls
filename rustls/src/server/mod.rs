@@ -421,8 +421,13 @@ impl ServerSessionImpl {
     }
 
     pub fn process_new_handshake_messages(&mut self, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
-        while let Some(msg) = self.common.handshake_joiner.frames.pop_front() {
-            self.process_main_protocol(msg, flush_to)?;
+        match flush_to {
+            None => while let Some(msg) = self.common.handshake_joiner.frames.pop_front() {
+                self.process_main_protocol(msg, None)?;
+            },
+            Some(socket) => while let Some(msg) = self.common.handshake_joiner.frames.pop_front() {
+                self.process_main_protocol(msg, Some(socket))?;
+            },
         }
 
         Ok(())
@@ -443,7 +448,7 @@ impl ServerSessionImpl {
         rc
     }
 
-    pub fn process_main_protocol(&mut self, msg: Message, mut flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
+    pub fn process_main_protocol(&mut self, msg: Message, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         if self.common.traffic && !self.common.is_tls13() &&
            msg.is_handshake_type(HandshakeType::ClientHello) {
             self.common.send_warning_alert(AlertDescription::NoRenegotiation);
@@ -455,34 +460,49 @@ impl ServerSessionImpl {
         let maybe_next_state = state.handle(self, msg);
         let mut next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
 
-        loop {
-            match next_state {
-                hs::NextState::FullState(s) => {
-                    self.state = Some(s);
+        match flush_to {
+            None => loop {
+                match next_state {
+                    hs::NextState::FullState(s) => {
+                        self.state = Some(s);
 
-                    return Ok(())
-                },
-                hs::NextState::IntermediaryState(s) => {
-                    // Continue processing messages
-                    let state = s;
-                    let maybe_next_state = state.handle(self);
-                    next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
+                        return Ok(())
+                    },
+                    hs::NextState::IntermediaryState(s) => {
+                        // Continue processing messages
+                        let state = s;
+                        let maybe_next_state = state.handle(self);
+                        next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
+                    }
+                }
+            },
+            Some(socket) => loop {
+                match next_state {
+                    hs::NextState::FullState(s) => {
+                        self.state = Some(s);
 
-                    if let Some(socket) = flush_to {
+                        return Ok(())
+                    },
+                    hs::NextState::IntermediaryState(s) => {
+                        // First send pending messages
                         let rc = self.common.write_tls(socket);
                         if rc.is_err() {
                             // TODO: Change error
                             return Err(TLSError::CorruptMessage);
                         }
 
-                        flush_to = Some(socket)
+                        // Continue processing messages
+                        let state = s;
+                        let maybe_next_state = state.handle(self);
+                        next_state = self.maybe_send_unexpected_alert(maybe_next_state)?;
+
                     }
                 }
             }
         }
     }
 
-    pub fn process_new_packets(&mut self, mut flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
+    pub fn process_new_packets(&mut self, flush_to: Option<&mut dyn io::Write>) -> Result<(), TLSError> {
         if let Some(ref err) = self.error {
             return Err(err.clone());
         }
@@ -491,22 +511,28 @@ impl ServerSessionImpl {
             return Err(TLSError::CorruptMessage);
         }
 
-        // let r = flush_to.as_deref_mut();
 
-        while let Some(msg) = self.common.message_deframer.frames.pop_front() {
-            // let rc 
-            match self.process_msg(msg, (&mut flush_to).as_deref_mut()) {//flush_to.as_deref_mut()) {
-                Ok(_) => {}
-                Err(err) => {
-
-                                                return Err(TLSError::CorruptMessage);
-
-                    // self.error = Some(err.clone());
-                    // return Err(err);
+        match flush_to {
+            None => while let Some(msg) = self.common.message_deframer.frames.pop_front() {
+                match self.process_msg(msg, None) {// r.as_deref_mut()) {//flush_to.as_deref_mut()) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        self.error = Some(err.clone());
+                        return Err(err);
+                    }
+                }
+            },
+            Some(socket) => while let Some(msg) = self.common.message_deframer.frames.pop_front() {
+                match self.process_msg(msg, Some(socket)) {// r.as_deref_mut()) {//flush_to.as_deref_mut()) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        self.error = Some(err.clone());
+                        return Err(err);
+                    }
                 }
             }
-
         }
+
 
         Ok(())
     }
