@@ -308,6 +308,13 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
+        NamedGroup::CSIDHP512 => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::CsidhP512).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
         NamedGroup::BIKEL1 => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::BikeL1).unwrap();

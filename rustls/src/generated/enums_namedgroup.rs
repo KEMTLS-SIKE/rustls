@@ -60,10 +60,11 @@ enum_builder! {
         SIKEP751 => 0x0225,
         SIKEP751COMPRESSED => 0x0226,
         SIKEP751COMPRESSED1CCA => 0x0227,
-        BIKEL1 => 0x0228,
-        BIKEL3 => 0x0229,
-        HQC128 => 0x022a,
-        HQC192 => 0x022b,
-        HQC256 => 0x022c,
+        CSIDHP512 => 0x0228,
+        BIKEL1 => 0x0229,
+        BIKEL3 => 0x022a,
+        HQC128 => 0x022b,
+        HQC192 => 0x022c,
+        HQC256 => 0x022d,
     }
 }

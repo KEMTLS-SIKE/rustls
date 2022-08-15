@@ -94,6 +94,7 @@ match scheme {
     SignatureScheme::KEMTLS_SIKEP751 => include_bytes!("data/alg-sikep751.der"),
     SignatureScheme::KEMTLS_SIKEP751COMPRESSED => include_bytes!("data/alg-sikep751compressed.der"),
     SignatureScheme::KEMTLS_SIKEP751COMPRESSED1CCA => include_bytes!("data/alg-sikep751compressed1cca.der"),
+    SignatureScheme::KEMTLS_CSIDHP512 => include_bytes!("data/alg-csidhp512.der"),
     SignatureScheme::KEMTLS_BIKEL1 => include_bytes!("data/alg-bikel1.der"),
     SignatureScheme::KEMTLS_BIKEL3 => include_bytes!("data/alg-bikel3.der"),
     SignatureScheme::KEMTLS_HQC128 => include_bytes!("data/alg-hqc128.der"),

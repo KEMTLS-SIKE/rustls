@@ -43,6 +43,7 @@
     SignatureScheme::KEMTLS_SIKEP751,
     SignatureScheme::KEMTLS_SIKEP751COMPRESSED,
     SignatureScheme::KEMTLS_SIKEP751COMPRESSED1CCA,
+    SignatureScheme::KEMTLS_CSIDHP512,
     SignatureScheme::KEMTLS_BIKEL1,
     SignatureScheme::KEMTLS_BIKEL3,
     SignatureScheme::KEMTLS_HQC128,
