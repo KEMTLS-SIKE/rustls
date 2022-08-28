@@ -269,7 +269,7 @@ pub mod internal {
     pub mod kems {
         pub use crate::client::default_group::DEFAULT_GROUP as DEFAULT_GROUP;
         pub use crate::suites::{KeyExchange,KexAlgorithm};
-        pub use oqs::sike_deinit as sike_deinit;
+        pub use oqs::kem_deinit as kem_deinit;
     }
 }
 

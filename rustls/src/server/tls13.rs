@@ -110,7 +110,7 @@ impl CompleteClientHelloHandling {
         // Do key exchange
         self.handshake.print_runtime("ENCAPSULATING TO EPHEMERAL");
         let kxr = if sess.config.split_encapsulation {
-                suites::KeyExchange::encapsulate_ciphertext(share.group, &share.payload.0)
+                suites::KeyExchange::encapsulate_ciphertext(share.group)
             } else if sess.config.async_encapsulation {
                 suites::KeyExchange::async_encapsulate(share.group,&share.payload.0)
             } else {

@@ -176,12 +176,11 @@ impl KeyExchange {
     }
 
     // First split encapsulate (ciphertext) to the server's share
-    pub fn encapsulate_ciphertext(named_group: NamedGroup, peer: &[u8]) -> Option<KeyExchangeResult> {
+    pub fn encapsulate_ciphertext(named_group: NamedGroup) -> Option<KeyExchangeResult> {
         let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
         match alg {
             KexAlgorithm::KEM(kem) => {
-                let pk = kem.public_key_from_bytes(peer)?;
-                let (ciphertext, ephemeral_secret) = kem.encapsulate_ciphertext(pk).ok()?;
+                let (ciphertext, ephemeral_secret) = kem.encapsulate_ciphertext().ok()?;
                 Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: ephemeral_secret.into_vec()})
             },
             _ => {
