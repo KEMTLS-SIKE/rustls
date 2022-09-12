@@ -189,9 +189,23 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
+        NamedGroup::FRODOKEM640AES1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem640Aes1CCA).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
         NamedGroup::FRODOKEM640SHAKE => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem640Shake).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::FRODOKEM640SHAKE1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem640Shake1CCA).unwrap();
 
             Some(KexAlgorithm::KEM(kem))
         },
@@ -203,9 +217,23 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
+        NamedGroup::FRODOKEM976AES1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem976Aes1CCA).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
         NamedGroup::FRODOKEM976SHAKE => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem976Shake).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::FRODOKEM976SHAKE1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem976Shake1CCA).unwrap();
 
             Some(KexAlgorithm::KEM(kem))
         },
@@ -217,9 +245,23 @@ match group {
             Some(KexAlgorithm::KEM(kem))
         },
 
+        NamedGroup::FRODOKEM1344AES1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem1344Aes1CCA).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
         NamedGroup::FRODOKEM1344SHAKE => {
             oqs::init();
             let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem1344Shake).unwrap();
+
+            Some(KexAlgorithm::KEM(kem))
+        },
+
+        NamedGroup::FRODOKEM1344SHAKE1CCA => {
+            oqs::init();
+            let kem = oqs::kem::Kem::new(oqs::kem::Algorithm::FrodoKem1344Shake1CCA).unwrap();
 
             Some(KexAlgorithm::KEM(kem))
         },
