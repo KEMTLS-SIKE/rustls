@@ -50,6 +50,7 @@ match scheme {
     SignatureScheme::KEMTLS_SIKEP751COMPRESSED => oqs::kem::Algorithm::SikeP751Compressed,
     SignatureScheme::KEMTLS_SIKEP751COMPRESSED1CCA => oqs::kem::Algorithm::SikeP751Compressed1CCA,
     SignatureScheme::KEMTLS_CSIDHP512 => oqs::kem::Algorithm::CsidhP512,
+    SignatureScheme::KEMTLS_CSIDHP1024 => oqs::kem::Algorithm::CsidhP1024,
     SignatureScheme::KEMTLS_BIKEL1 => oqs::kem::Algorithm::BikeL1,
     SignatureScheme::KEMTLS_BIKEL3 => oqs::kem::Algorithm::BikeL3,
     SignatureScheme::KEMTLS_HQC128 => oqs::kem::Algorithm::Hqc128,

@@ -121,11 +121,12 @@ enum_builder! {
         KEMTLS_SIKEP751COMPRESSED => 0xfe63,
         KEMTLS_SIKEP751COMPRESSED1CCA => 0xfe64,
         KEMTLS_CSIDHP512 => 0xfe65,
-        KEMTLS_BIKEL1 => 0xfe66,
-        KEMTLS_BIKEL3 => 0xfe67,
-        KEMTLS_HQC128 => 0xfe68,
-        KEMTLS_HQC192 => 0xfe69,
-        KEMTLS_HQC256 => 0xfe6a,
+        KEMTLS_CSIDHP1024 => 0xfe66,
+        KEMTLS_BIKEL1 => 0xfe67,
+        KEMTLS_BIKEL3 => 0xfe68,
+        KEMTLS_HQC128 => 0xfe69,
+        KEMTLS_HQC192 => 0xfe6a,
+        KEMTLS_HQC256 => 0xfe6b,
 
     }
 }
