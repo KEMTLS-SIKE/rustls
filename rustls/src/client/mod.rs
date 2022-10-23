@@ -144,6 +144,11 @@ pub struct ClientConfig {
     ///
     /// The default is false.
     pub async_keypair: bool,
+
+    /// Whether to do encaps async. Used when doing client auth, or KEM TLS.
+    ///
+    /// The default is false.
+    pub async_encapsulation: bool,
     
 }
 
@@ -183,6 +188,7 @@ impl ClientConfig {
             enable_early_data: false,
             known_certificates: Vec::new(),
             async_keypair: false,
+            async_encapsulation: false,
         }
     }
 

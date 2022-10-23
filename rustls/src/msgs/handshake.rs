@@ -797,12 +797,16 @@ impl ClientExtension {
     // KEMTLS-PDK proactively encapsulate
     // XXX this doesn't do proper validation of the certificate so anything in the cache is trusted
     // Also this doesn't account for any of the settings of the client or server in regards to acceptable algorithms
-    pub fn make_proactive_ciphertext(certs: &[key::Certificate], hostname: webpki::DNSNameRef) -> Option<(ClientExtension, oqs::kem::SharedSecret)> {
+    pub fn make_proactive_ciphertext(async_encapsulate: bool, certs: &[key::Certificate], hostname: webpki::DNSNameRef) -> Option<(ClientExtension, oqs::kem::SharedSecret)> {
         for cert in certs.iter() {
             let eecert = webpki::EndEntityCert::from(&cert.0);
             if let Ok(eecert) = eecert {
                 if eecert.is_kem_cert() && eecert.verify_is_valid_for_dns_name(hostname).is_ok() {
-                    let (ct, ss) = eecert.encapsulate().ok()?;
+                    let (ct, ss) = (if async_encapsulate {
+                        eecert.async_encapsulate()
+                    } else {
+                        eecert.encapsulate()
+                    }).ok()?;
                     return Some(
                         (ClientExtension::ProactiveCiphertext(
                             ProactiveCiphertextOffer { 

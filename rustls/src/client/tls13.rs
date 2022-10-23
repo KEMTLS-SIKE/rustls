@@ -509,7 +509,11 @@ impl ExpectCertificate {
         emit_fake_ccs(&mut self.handshake, sess);
 
         self.handshake.print_runtime("ENCAPSULATING TO CERT");
-        let (ct, ss) = certificate.encapsulate().map_err(TLSError::WebPKIError)?;
+        let (ct, ss) = (if sess.config.async_encapsulation {
+            certificate.async_encapsulate()
+        } else {
+            certificate.encapsulate()
+        }).map_err(TLSError::WebPKIError)?;
         self.handshake.print_runtime("ENCAPSULATED TO CERT");
         let m = Message {
             typ: ContentType::Handshake,
